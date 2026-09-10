@@ -40,6 +40,28 @@ async def get_companies(workspace_id: Optional[str] = None, token_data: dict = D
     
     return result
 
+import re
+
+def normalize_money(val: str) -> str:
+    if not isinstance(val, str) or val in ("N/A", "", "0", "None"): return "N/A"
+    val_lower = val.lower()
+    match = re.search(r'[-+]?\d*\.\d+|\d+', val.replace(',', ''))
+    if not match: return val
+    num = float(match.group())
+    if "t" in val_lower or "trillion" in val_lower: num *= 1000
+    elif "b" in val_lower or "billion" in val_lower: num *= 1
+    elif "m" in val_lower or "million" in val_lower: num /= 1000
+    else:
+        if num > 1000: num /= 1000
+    return f"${num:.1f}B"
+
+def normalize_eps(val: str) -> str:
+    if not isinstance(val, str) or val in ("N/A", "", "0", "None"): return "N/A"
+    match = re.search(r'[-+]?\d*\.\d+|\d+', val.replace(',', ''))
+    if not match: return val
+    num = float(match.group())
+    return f"${num:.2f}"
+
 @router.post("/compare")
 async def compare_companies(req: CompareRequest, token_data: dict = Depends(get_current_user_token)):
     user_id = token_data.get("sub")
@@ -169,6 +191,98 @@ async def compare_companies(req: CompareRequest, token_data: dict = Depends(get_
                     "agent": "Report Agent",
                     "timestamp": report.get("created_at", "N/A")
                 })
+        else:
+            # Fallback: Extract basic metrics using LLM if no report exists
+            docs_col = db["documents"]
+            cursor = docs_col.find({"user_id": user_id, "company_name": c_id}).sort("uploaded_at", -1).limit(5)
+            docs = [d async for d in cursor]
+            
+            if docs:
+                chunks_col = db["parsed_chunks"]
+                doc_ids = [d["_id"] for d in docs]
+                
+                # Fetch tables first, then some text
+                table_cursor = chunks_col.find({"document_id": {"$in": doc_ids}, "type": "table_chunk"}).limit(30)
+                table_chunks = [c async for c in table_cursor]
+                
+                text_cursor = chunks_col.find({"document_id": {"$in": doc_ids}, "type": "text_chunk"}).limit(50)
+                text_chunks = [c async for c in text_cursor]
+                
+                all_chunks = table_chunks + text_chunks
+                doc_text = "\\n".join([c.get("text", "") for c in all_chunks])
+                
+                if doc_text.strip():
+                    import os, json
+                    from openai import AsyncOpenAI
+                    client = AsyncOpenAI(
+                        api_key=os.getenv("OPENAI_API_KEY"),
+                        base_url=os.getenv("OPENAI_API_BASE")
+                    )
+                    prompt = f'''
+Extract the following financial metrics for {c_id} from the text below.
+Return ONLY a valid JSON object with these exact keys:
+"revenue", "netIncome", "eps", "ebitda", "profitMargin", "roe", "debtToEquity"
+If a value is not found, use "N/A" (or 0 for ratios). Use string formatting like "$10.5B" for monetary values.
+
+Text:
+{doc_text[:100000]}
+                    '''
+                    try:
+                        completion = await client.chat.completions.create(
+                            model=os.getenv("OPENAI_MODEL_NAME", "openai/gpt-4o-mini"),
+                            messages=[{"role": "user", "content": prompt}]
+                        )
+                        content = completion.choices[0].message.content
+                        if "```json" in content:
+                            content = content.split("```json")[1].split("```")[0]
+                        elif "```" in content:
+                            content = content.split("```")[1].split("```")[0]
+                        
+                        extracted = json.loads(content.strip())
+                        
+                        c_metrics["revenue"] = str(extracted.get("revenue", "N/A"))
+                        c_metrics["netIncome"] = str(extracted.get("netIncome", "N/A"))
+                        c_metrics["eps"] = str(extracted.get("eps", "N/A"))
+                        c_metrics["ebitda"] = str(extracted.get("ebitda", "N/A"))
+                        c_metrics["profitMargin"] = str(extracted.get("profitMargin", "N/A"))
+                        
+                        try:
+                            roe_str = str(extracted.get("roe", "0")).replace("%", "").replace("N/A", "0").strip()
+                            c_ratios["roe"] = float(roe_str)
+                        except:
+                            pass
+                        
+                        try:
+                            dte_str = str(extracted.get("debtToEquity", "0")).replace("x", "").replace("N/A", "0").strip()
+                            c_ratios["debtToEquity"] = float(dte_str)
+                        except:
+                            pass
+                            
+                        insights.append({
+                            "text": f"Dynamically extracted financial snapshot for {c_id} from raw document chunks.",
+                            "source": docs[0].get("title", "Uploaded Document"),
+                            "page": "Quick Extraction",
+                            "agent": "Comparison Agent Fallback",
+                            "timestamp": docs[0].get("uploaded_at", "N/A")
+                        })
+                    except Exception as e:
+                        print(f"Fallback extraction failed for {c_id}: {e}")
+                            
+        # Normalize the metrics for uniform UI display
+        c_metrics["revenue"] = normalize_money(c_metrics["revenue"])
+        c_metrics["netIncome"] = normalize_money(c_metrics["netIncome"])
+        c_metrics["ebitda"] = normalize_money(c_metrics["ebitda"])
+        c_metrics["marketCap"] = normalize_money(c_metrics["marketCap"])
+        c_metrics["eps"] = normalize_eps(c_metrics["eps"])
+        
+        # Ensure percentages have % sign
+        for p_key in ["profitMargin", "revenueGrowth"]:
+            val = str(c_metrics.get(p_key, "N/A")).replace("%", "")
+            if val not in ("N/A", ""):
+                try:
+                    c_metrics[p_key] = f"{float(val)}%"
+                except:
+                    pass
         
         metrics[c_id] = c_metrics
         risk[c_id] = c_risk

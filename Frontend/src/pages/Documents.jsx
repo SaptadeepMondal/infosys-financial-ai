@@ -58,7 +58,11 @@ export const Documents = () => {
     
     setUploading(1);
     try {
-      await documentService.uploadDocument(file, targetWsId, 'Infosys Limited', 'Annual Report', 2024, (p) =>
+      const companyName = file.name ? (file.name.split('.').slice(0, -1).join('.') || file.name) : 'Infosys Limited';
+      // Capitalize first letter
+      const formattedName = companyName.charAt(0).toUpperCase() + companyName.slice(1);
+      
+      await documentService.uploadDocument(file, targetWsId, formattedName, 'Annual Report', 2024, (p) =>
         setUploading(Math.max(1, p))
       );
       await load();

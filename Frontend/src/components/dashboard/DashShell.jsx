@@ -56,10 +56,8 @@ const NAV_PRIMARY = [
   { name: 'Research Workspace', to: '/workspace', icon: Layers },
   { name: 'Documents', to: '/documents', icon: FileText },
   { name: 'Reports', to: '/reports', icon: FileBarChart },
-  { name: 'Risk Intelligence', to: '/workspace', icon: ShieldAlert },
+  { name: 'Comparison Agent', to: '/comparison', icon: Scale },
 ];
-
-const NAV_COMPARISON = [{ name: 'Comparison Agent', to: '/comparison', icon: Scale }];
 
 const NAV_SECONDARY = [
   { name: 'Settings', to: '/profile', icon: Settings },
@@ -81,7 +79,7 @@ export const DashShell = ({ children }) => {
   const name = user?.full_name || 'Analyst';
   const initial = name.charAt(0).toUpperCase();
 
-  const ALL_NAV = [...NAV_PRIMARY, ...NAV_COMPARISON, ...NAV_SECONDARY];
+  const ALL_NAV = [...NAV_PRIMARY, ...NAV_SECONDARY];
   const activeName =
     ALL_NAV.find((n) => location.pathname === n.to || location.pathname.startsWith(`${n.to}/`))?.name || '';
 
@@ -132,9 +130,6 @@ export const DashShell = ({ children }) => {
           <nav className="dash-nav">
             <p className="dash-nav-label">Research</p>
             {NAV_PRIMARY.map(renderItem)}
-            <div className="dash-nav-divider" />
-            <p className="dash-nav-label">Comparison</p>
-            {NAV_COMPARISON.map(renderItem)}
             <div className="dash-nav-divider" />
             <p className="dash-nav-label">System</p>
             {NAV_SECONDARY.map(renderItem)}

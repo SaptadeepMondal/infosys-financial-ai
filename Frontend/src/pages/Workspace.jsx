@@ -109,10 +109,13 @@ export const Workspace = () => {
     if (!file || !activeWorkspace) return;
     setUploading(1);
     try {
+      const companyName = file.name ? (file.name.split('.').slice(0, -1).join('.') || file.name) : 'Infosys Limited';
+      const formattedName = companyName.charAt(0).toUpperCase() + companyName.slice(1);
+
       await documentService.uploadDocument(
         file,
         activeWorkspace.id,
-        'Infosys Limited',
+        formattedName,
         'Annual Report',
         2024,
         (p) => setUploading(Math.max(1, p))

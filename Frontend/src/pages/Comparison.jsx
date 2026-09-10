@@ -258,7 +258,7 @@ export const Comparison = () => {
       </section>
 
       {/* Selection */}
-      <article className="dash-card dash-reveal" ref={entryRef}>
+      <article className="dash-card dash-reveal relative z-40" ref={entryRef}>
         <CardHead
           title="Select Companies to Compare"
           subtitle="Choose 2 to 4 companies for side-by-side analysis."
