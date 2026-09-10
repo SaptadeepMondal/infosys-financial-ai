@@ -37,13 +37,7 @@ const KPI_MAP = [
   { icon: 'FileCheck', label: 'Reports Generated', Icon: BarChart3, tint: '#1D7A5F', bg: '#E8F7F1' },
 ];
 
-const AGENTS = [
-  { name: 'Document Agent', Icon: FileText, to: '/workspace' },
-  { name: 'Extraction Agent', Icon: Sparkles, to: '/workspace' },
-  { name: 'Risk Agent', Icon: ShieldAlert, to: '/workspace' },
-  { name: 'Comparison Agent', Icon: Activity, to: '/workspace' },
-  { name: 'Report Agent', Icon: FileBarChart, to: '/reports' },
-];
+
 
 const QUICK_ACTIONS = [
   {
@@ -161,13 +155,7 @@ export const Dashboard = () => {
   );
   const hasActivity = documents.length + sessions.length + reports.length > 0;
 
-  const riskTotal = Number(stats.find((s) => s.icon === 'AlertTriangle')?.value || 0);
-  const riskBands = [
-    { label: 'High', value: Math.round(riskTotal * 0.15), color: '#E48AA0', bg: '#FDEEF1' },
-    { label: 'Medium', value: Math.round(riskTotal * 0.34), color: '#E3B25C', bg: '#FDF4E3' },
-    { label: 'Low', value: riskTotal - Math.round(riskTotal * 0.15) - Math.round(riskTotal * 0.34), color: '#6FBDA3', bg: '#E8F7F1' },
-  ];
-  const riskMax = Math.max(1, ...riskBands.map((b) => b.value));
+
 
   const name = user?.full_name || 'Analyst';
 
@@ -263,9 +251,9 @@ export const Dashboard = () => {
         ))}
       </section>
 
-      {/* LEVEL 3 + 4 — activity chart & AI agents */}
-      <section className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <article className="dash-card xl:col-span-2 dash-reveal">
+      {/* LEVEL 3 + 4 — activity chart */}
+      <section className="grid grid-cols-1 gap-4">
+        <article className="dash-card dash-reveal">
           <CardHead
             title="Research Activity"
             subtitle="Financial research activity over time"
@@ -298,29 +286,6 @@ export const Dashboard = () => {
                 to="/workspace"
               />
             )}
-          </div>
-        </article>
-
-        <article className="dash-card dash-reveal">
-          <CardHead title="AI Agents" subtitle="Current research activity" />
-          <div className="p-2.5">
-            {AGENTS.map((agent) => {
-              const active = !error;
-              return (
-                <Link key={agent.name} to={agent.to} className="dash-row">
-                  <span className={`dash-status-dot ${active ? 'status-active' : 'status-idle'}`} />
-                  <span className="dash-row-icon" style={{ background: '#EEF5FF', color: '#2563EB' }}>
-                    <agent.Icon className="w-[17px] h-[17px]" />
-                  </span>
-                  <span className="flex-1 min-w-0 text-[13.5px] font-semibold text-slate-700 truncate">
-                    {agent.name}
-                  </span>
-                  <span className={`dash-badge ${active ? 'badge-ok' : 'badge-info'}`}>
-                    {active ? 'Active' : 'Idle'}
-                  </span>
-                </Link>
-              );
-            })}
           </div>
         </article>
       </section>
@@ -411,50 +376,9 @@ export const Dashboard = () => {
         </article>
       </section>
 
-      {/* LEVEL 5 — risk signals & indexed documents */}
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <article className="dash-card dash-card-hover dash-reveal">
-          <CardHead title="Risk Signals" subtitle="Detected across recent research" />
-          <div className="p-5">
-            {riskTotal === 0 ? (
-              <Empty
-                Icon={ShieldAlert}
-                title="No risk signals"
-                description="Risk signals raised by the agents during analysis will surface here."
-                actionLabel="Analyze a Filing"
-                to="/workspace"
-              />
-            ) : (
-              <>
-                <div className="flex items-baseline gap-2 mb-5">
-                  <span className="dash-kpi-value">{riskTotal}</span>
-                  <span className="text-[12.5px] text-slate-500">signals detected</span>
-                </div>
-                <div className="space-y-3.5">
-                  {riskBands.map((b) => (
-                    <div key={b.label}>
-                      <div className="flex items-center justify-between text-[12.5px] mb-1.5">
-                        <span className="font-semibold text-slate-600">{b.label}</span>
-                        <span className="font-semibold text-slate-800">{b.value}</span>
-                      </div>
-                      <div className="h-2 rounded-full" style={{ background: b.bg }}>
-                        <div
-                          className="h-2 rounded-full transition-all duration-700"
-                          style={{ width: `${(b.value / riskMax) * 100}%`, background: b.color }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <Link to="/workspace" className="dash-link mt-5">
-                  Open Risk Intelligence <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
-              </>
-            )}
-          </div>
-        </article>
-
-        <article className="dash-card lg:col-span-2 dash-reveal">
+      {/* LEVEL 5 — indexed documents */}
+      <section className="grid grid-cols-1 gap-4">
+        <article className="dash-card dash-reveal">
           <CardHead
             title="Recently Indexed"
             subtitle="Latest financial documents"

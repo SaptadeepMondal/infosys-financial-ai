@@ -14,18 +14,14 @@ import { CardHead } from './ui';
 
 /* Light-theme research chat for the authenticated Research Workspace.
    Logic (chatService history + query) is identical to the original panel. */
-export const ResearchChat = ({ workspaceId, onCitations }) => {
+export const ResearchChat = ({ workspaceId, documentId, onCitations }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState({});
-  const bottomRef = useRef(null);
+  const containerRef = useRef(null);
 
-  const suggestedQueries = [
-    'What was Infosys operating margin in FY24?',
-    'Are there any debt or auditor red flags?',
-    'Compare Infosys EBIT against TCS and Wipro',
-  ];
+
 
   const fetchHistory = async () => {
     if (!workspaceId) return;
@@ -54,7 +50,12 @@ export const ResearchChat = ({ workspaceId, onCitations }) => {
   }, [workspaceId]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (containerRef.current) {
+      containerRef.current.scrollTo({
+        top: containerRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
   }, [messages, loading]);
 
   useEffect(() => {
@@ -80,7 +81,7 @@ export const ResearchChat = ({ workspaceId, onCitations }) => {
     setLoading(true);
 
     try {
-      const res = await chatService.query(textToSend, workspaceId);
+      const res = await chatService.query(textToSend, workspaceId, documentId);
       setMessages((prev) => [...prev, res.message]);
     } catch (err) {
       setMessages((prev) => [
@@ -106,18 +107,9 @@ export const ResearchChat = ({ workspaceId, onCitations }) => {
         right={<span className="dash-badge badge-ok">Source grounded</span>}
       />
 
-      <div className="px-4 pt-3.5 flex items-center gap-2 overflow-x-auto">
-        <span className="text-[11px] font-semibold text-slate-400 shrink-0 flex items-center gap-1.5">
-          <Sparkles className="w-3.5 h-3.5 text-[#6D4AFF]" /> Suggested
-        </span>
-        {suggestedQueries.map((sq) => (
-          <button key={sq} type="button" onClick={() => handleSend(sq)} className="app-chip">
-            {sq}
-          </button>
-        ))}
-      </div>
 
-      <div className="app-chat-scroll">
+
+      <div className="app-chat-scroll" ref={containerRef}>
         {messages.map((msg) => {
           const isUser = msg.role === 'user';
           const hasReasoning = msg.reasoning_steps && msg.reasoning_steps.length > 0;
@@ -193,33 +185,42 @@ export const ResearchChat = ({ workspaceId, onCitations }) => {
         })}
 
         {loading && (
-          <div className="flex items-center gap-2.5 text-[12.5px] text-slate-500">
+          <div className="flex items-center gap-2.5 text-[12.5px] text-slate-500 mt-2">
             <span className="dash-status-dot status-active" />
             Agents are researching your filings…
           </div>
         )}
-        <div ref={bottomRef} />
       </div>
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          handleSend();
-        }}
-        className="flex items-center gap-2.5 p-4 border-t border-[#EDF2FB]"
-      >
-        <input
-          className="app-field"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask about revenue, margins, risks, peers…"
-          disabled={!workspaceId || loading}
-        />
-        <button type="submit" className="dash-btn dash-btn-primary" disabled={!workspaceId || loading}>
-          <Send className="w-4 h-4" />
-          Ask
-        </button>
-      </form>
+      <div className="flex flex-col border-t border-[#EDF2FB]">
+        {documentId && (
+          <div className="px-4 pt-3 flex items-center gap-2">
+            <span className="dash-badge badge-info flex items-center gap-1.5">
+              <FileText className="w-3 h-3" />
+              Querying selected document
+            </span>
+          </div>
+        )}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSend();
+          }}
+          className="flex items-center gap-2.5 p-4"
+        >
+          <input
+            className="app-field"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder={documentId ? "Ask a specific question about this filing…" : "Ask about revenue, margins, risks, peers…"}
+            disabled={!workspaceId || loading}
+          />
+          <button type="submit" className="dash-btn dash-btn-primary" disabled={!workspaceId || loading}>
+            <Send className="w-4 h-4" />
+            Ask
+          </button>
+        </form>
+      </div>
     </article>
   );
 };

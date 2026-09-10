@@ -42,6 +42,7 @@ class FinancialCrewRunner:
         comparison_task = get_comparison_task(
             comparison_agent, 
             context_tasks=[extraction_task],
+            company_name=company_name,
             historical_data=historical_data
         )
         
@@ -109,62 +110,24 @@ class FinancialCrewRunner:
         """
         Runs the financial research pipeline for chatbot queries.
 
-        Pipeline:
-        Extraction → Red Flag → Comparison → Research
-
-        Unlike run_pipeline(), this method stops at the Research Agent
-        and returns the research answer for the chatbot.
+        It only runs the Research Agent directly against the document_text to answer the user query quickly.
         """
 
-        # 1. Initialize agents
-        extraction_agent = get_extraction_agent()
-        red_flag_agent = get_red_flag_agent()
-        comparison_agent = get_comparison_agent()
+        # 1. Initialize agent
         research_agent = get_research_agent()
 
-        # 2. Create tasks
-        extraction_task = get_extraction_task(
-            extraction_agent,
-            document_text
-        )
-
-        red_flag_task = get_red_flag_task(
-            red_flag_agent,
-            context_tasks=[extraction_task],
-            document_id=document_id,
-            company_name=company_name
-        )
-
-        comparison_task = get_comparison_task(
-            comparison_agent,
-            context_tasks=[extraction_task],
-            historical_data=historical_data
-        )
-
+        # 2. Create task
         research_task = get_research_task(
-            research_agent,
-            context_tasks=[
-                extraction_task,
-                red_flag_task,
-                comparison_task
-            ],
-            query=query
+            agent=research_agent,
+            context_tasks=None,
+            query=query,
+            document_text=document_text
         )
 
         # 3. Create research-only crew
         crew = Crew(
-            agents=[
-                extraction_agent,
-                red_flag_agent,
-                comparison_agent,
-                research_agent
-            ],
-            tasks=[
-                extraction_task,
-                red_flag_task,
-                comparison_task,
-                research_task
-            ],
+            agents=[research_agent],
+            tasks=[research_task],
             process=Process.sequential,
             verbose=True
         )

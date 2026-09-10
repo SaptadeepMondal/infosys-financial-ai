@@ -73,6 +73,7 @@ class DocumentListResponse(BaseModel):
 class ChatQueryRequest(BaseModel):
     query: str
     workspace_id: str
+    document_id: Optional[str] = None
     company_name: Optional[str] = None
 
 class Citation(BaseModel):
@@ -114,8 +115,13 @@ class RedFlagSchema(BaseModel):
 class ComparisonItemSchema(BaseModel):
     company: str
     revenue: str
+    net_income: str
+    eps: str
+    gross_margin: str
     ebit_margin: str
+    ebitda: str
     roe: str
+    debt_to_equity: str
     fcf_conversion: str
 
 class FinancialMetricsOutput(BaseModel):

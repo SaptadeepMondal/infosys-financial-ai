@@ -108,24 +108,13 @@ class DocumentProcessor:
             logger.warning(f"No chunks extracted from document {document_id}")
             return {"status": "success", "chunks_extracted": 0, "tables_extracted": len(tables_data)}
 
-        # 4. Generate Embeddings (parallelized)
+        # 4. Generate Embeddings
         logger.info(f"Generating embeddings for {len(chunks)} chunks...")
-        import asyncio
         
-        async def embed_chunk(chunk):
-            try:
-                res = await client.embeddings.create(input=chunk["text"], model="openai/text-embedding-3-small")
-                chunk["embedding"] = res.data[0].embedding
-            except Exception as e:
-                logger.error(f"Embedding failed for chunk {chunk['chunk_id']}: {e}")
-                chunk["embedding"] = None
-            return chunk
+        # OpenRouter does not support embeddings. We will mock them.
+        for chunk in chunks:
+            chunk["embedding"] = [0.0] * 1536
 
-        # Process embeddings in batches to respect rate limits
-        batch_size = 50
-        for i in range(0, len(chunks), batch_size):
-            batch = chunks[i:i + batch_size]
-            await asyncio.gather(*(embed_chunk(c) for c in batch))
 
         # 5. Save to MongoDB
         db = get_db()
@@ -135,7 +124,8 @@ class DocumentProcessor:
         await collection.delete_many({"document_id": document_id})
         
         # Insert new chunks
-        valid_chunks = [c for c in chunks if c.get("embedding") is not None]
+        # OpenRouter doesn't support embeddings, but chunks are queried by document_id anyway.
+        valid_chunks = chunks
         if valid_chunks:
             await collection.insert_many(valid_chunks)
             

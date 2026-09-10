@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Fragment } from 'react';
 import { Link } from 'react-router-dom';
+import { Menu, Transition } from '@headlessui/react';
 import { workspaceService } from '../services/workspaceService';
 import { documentService } from '../services/documentService';
 import { ResearchChat } from '../components/app/ResearchChat';
@@ -17,22 +18,26 @@ import {
   Quote,
   Trash2,
   ArrowUpRight,
+  ChevronDown,
+  MoreVertical,
+  Check,
 } from 'lucide-react';
 import './dashboard.css';
 import './app-pages.css';
 
-const AGENTS = [
-  { name: 'Document Agent', Icon: FileText },
-  { name: 'Extraction Agent', Icon: Sparkles },
-  { name: 'Risk Agent', Icon: ShieldAlert },
-  { name: 'Comparison Agent', Icon: Activity },
-  { name: 'Report Agent', Icon: FileBarChart },
-];
+
 
 export const Workspace = () => {
   const [workspaces, setWorkspaces] = useState([]);
-  const [activeWorkspace, setActiveWorkspace] = useState(null);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState(() => {
+    return localStorage.getItem('activeWorkspaceId') || null;
+  });
+  
+  // Compute activeWorkspace derived from state to ensure it always matches a valid object in the list
+  const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0] || null;
+
   const [documents, setDocuments] = useState([]);
+  const [activeDocumentId, setActiveDocumentId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newWsName, setNewWsName] = useState('');
@@ -45,7 +50,14 @@ export const Workspace = () => {
     try {
       const list = await workspaceService.getWorkspaces();
       setWorkspaces(list);
-      if (list.length > 0 && !activeWorkspace) setActiveWorkspace(list[0]);
+      
+      // If we don't have an active workspace saved, or the saved one doesn't exist, default to the first one
+      if (list.length > 0) {
+        const found = list.find(w => w.id === activeWorkspaceId);
+        if (!found) {
+          setActiveWorkspaceId(list[0].id);
+        }
+      }
     } catch (err) {
       console.error('Failed to load workspaces:', err);
     } finally {
@@ -56,7 +68,13 @@ export const Workspace = () => {
   const loadDocuments = async () => {
     if (!activeWorkspace) return;
     try {
-      setDocuments(await documentService.getDocuments(activeWorkspace.id));
+      const docs = await documentService.getDocuments(activeWorkspace.id);
+      setDocuments(docs);
+      if (activeDocumentId && docs.length > 0 && !docs.find((d) => d.id === activeDocumentId)) {
+        setActiveDocumentId(null);
+      } else if (docs.length === 0) {
+        setActiveDocumentId(null);
+      }
     } catch (err) {
       console.error('Failed to load documents:', err);
     }
@@ -67,8 +85,11 @@ export const Workspace = () => {
   }, []);
 
   useEffect(() => {
-    if (activeWorkspace) loadDocuments();
-  }, [activeWorkspace]);
+    if (activeWorkspace) {
+      localStorage.setItem('activeWorkspaceId', activeWorkspace.id);
+      loadDocuments();
+    }
+  }, [activeWorkspace?.id]);
 
   const handleCreateWorkspace = async (e) => {
     e.preventDefault();
@@ -76,7 +97,7 @@ export const Workspace = () => {
     try {
       const ws = await workspaceService.createWorkspace(newWsName.trim(), 'Created in Analyst Workspace');
       setWorkspaces((prev) => [ws, ...prev]);
-      setActiveWorkspace(ws);
+      setActiveWorkspaceId(ws.id);
       setNewWsName('');
       setShowCreateModal(false);
     } catch (err) {
@@ -114,6 +135,20 @@ export const Workspace = () => {
     }
   };
 
+  const handleDeleteWorkspace = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this workspace and all its documents?')) return;
+    try {
+      await workspaceService.deleteWorkspace(id);
+      const remaining = workspaces.filter(w => w.id !== id);
+      setWorkspaces(remaining);
+      if (activeWorkspaceId === id) {
+        setActiveWorkspaceId(remaining.length > 0 ? remaining[0].id : null);
+      }
+    } catch (err) {
+      alert('Failed to delete workspace.');
+    }
+  };
+
   return (
     <main className="dash-body">
       <PageHead
@@ -146,30 +181,75 @@ export const Workspace = () => {
       />
 
       {/* Active workspace selector */}
-      <section className="dash-card dash-reveal p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5 min-w-0">
+      <section className="dash-card dash-reveal p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-50">
+        <div className="flex items-center gap-3.5 min-w-0 flex-1">
           <span className="dash-row-icon" style={{ background: '#F2EEFF', color: '#6D4AFF' }}>
             <Layers className="w-[18px] h-[18px]" />
           </span>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Active workspace</p>
             <div className="mt-1.5 flex flex-wrap items-center gap-2.5">
-              <select
-                className="app-field w-auto max-w-full h-9 text-[13px] font-semibold"
-                value={activeWorkspace?.id || ''}
-                onChange={(e) => {
-                  const ws = workspaces.find((w) => w.id === e.target.value);
-                  if (ws) setActiveWorkspace(ws);
-                }}
-              >
-                {workspaces.length === 0 && <option value="">No workspaces yet</option>}
-                {workspaces.map((ws) => (
-                  <option key={ws.id} value={ws.id}>
-                    {ws.name} ({ws.documents_count ?? 0} docs)
-                  </option>
-                ))}
-              </select>
-              <span className="app-meta truncate">
+              <Menu as="div" className="relative inline-block text-left z-20">
+                <div>
+                  <Menu.Button className="inline-flex items-center justify-between w-full max-w-[280px] sm:w-[280px] gap-2 px-3 py-2 text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]/50">
+                    <span className="truncate">
+                      {activeWorkspace ? activeWorkspace.name : 'No workspaces yet'}
+                    </span>
+                    <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" aria-hidden="true" />
+                  </Menu.Button>
+                </div>
+                <Transition
+                  as={Fragment}
+                  enter="transition ease-out duration-100"
+                  enterFrom="transform opacity-0 scale-95"
+                  enterTo="transform opacity-100 scale-100"
+                  leave="transition ease-in duration-75"
+                  leaveFrom="transform opacity-100 scale-100"
+                  leaveTo="transform opacity-0 scale-95"
+                >
+                  <Menu.Items className="absolute left-0 mt-2 w-[280px] origin-top-left rounded-xl bg-white border border-slate-200 shadow-xl ring-1 ring-black ring-opacity-5 focus:outline-none overflow-hidden">
+                    <div className="p-1.5 max-h-[300px] overflow-y-auto">
+                      {workspaces.map((ws) => (
+                        <div key={ws.id} className="flex items-center justify-between group relative px-1 py-1">
+                          <Menu.Item as={Fragment}>
+                            {({ active }) => (
+                              <button
+                                onClick={() => setActiveWorkspaceId(ws.id)}
+                                className={`flex items-center w-full px-2.5 py-2 text-[13px] rounded-lg transition-colors ${
+                                  active ? 'bg-[#EEF5FF] text-[#2563EB]' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                }`}
+                              >
+                                <span className="flex-1 text-left truncate">{ws.name}</span>
+                                {activeWorkspaceId === ws.id && (
+                                  <Check className="w-4 h-4 text-[#2563EB] shrink-0 ml-2 mr-6" />
+                                )}
+                              </button>
+                            )}
+                          </Menu.Item>
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleDeleteWorkspace(ws.id);
+                            }}
+                            className="absolute right-2 p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100 z-10"
+                            title="Delete Workspace"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                      {workspaces.length === 0 && (
+                        <div className="px-3 py-2 text-[13px] text-slate-500 text-center">
+                          No workspaces found
+                        </div>
+                      )}
+                    </div>
+                  </Menu.Items>
+                </Transition>
+              </Menu>
+
+              <span className="app-meta truncate max-w-sm hidden sm:inline-block">
                 {activeWorkspace?.description || 'Multi-agent deep dive analysis on company filings.'}
               </span>
             </div>
@@ -181,35 +261,29 @@ export const Workspace = () => {
       </section>
 
       {uploading > 0 && (
-        <div className="dash-card dash-reveal p-4">
-          <p className="text-[12.5px] font-semibold text-slate-700 mb-2">Uploading filing… {uploading}%</p>
-          <div className="app-bar">
-            <span style={{ width: `${uploading}%` }} />
+        <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-[#0F172A]/25 backdrop-blur-sm">
+          <div className="dash-card w-full max-w-md p-6 space-y-4">
+            <div>
+              <h3 className="dash-card-title">Uploading filing</h3>
+              <p className="dash-card-sub">Please wait while the document is uploaded and indexed.</p>
+            </div>
+            <div className="pt-2">
+              <p className="text-[12.5px] font-semibold text-slate-700 mb-2">Progress… {uploading}%</p>
+              <div className="app-bar">
+                <span style={{ width: `${uploading}%` }} />
+              </div>
+            </div>
           </div>
         </div>
       )}
 
       <section className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div className="xl:col-span-2">
-          <ResearchChat workspaceId={activeWorkspace?.id} onCitations={setCitations} />
+          <ResearchChat workspaceId={activeWorkspace?.id} documentId={activeDocumentId} onCitations={setCitations} />
         </div>
 
         <div className="space-y-4">
-          <article className="dash-card dash-reveal">
-            <CardHead title="Active AI Agents" subtitle="Agents assigned to this workspace" />
-            <div className="p-2.5">
-              {AGENTS.map((a) => (
-                <div key={a.name} className="dash-row">
-                  <span className="dash-status-dot status-active" />
-                  <span className="dash-row-icon" style={{ background: '#EEF5FF', color: '#2563EB' }}>
-                    <a.Icon className="w-[17px] h-[17px]" />
-                  </span>
-                  <span className="flex-1 min-w-0 text-[13.5px] font-semibold text-slate-700 truncate">{a.name}</span>
-                  <span className="dash-badge badge-ok">Active</span>
-                </div>
-              ))}
-            </div>
-          </article>
+
 
           <article className="dash-card dash-reveal">
             <CardHead
@@ -231,28 +305,38 @@ export const Workspace = () => {
                   onAction={() => fileRef.current?.click()}
                 />
               ) : (
-                documents.map((doc) => (
-                  <div key={doc.id} className="dash-row">
-                    <span className="dash-row-icon" style={{ background: '#EEF5FF', color: '#2563EB' }}>
-                      <FileText className="w-[17px] h-[17px]" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-[13px] font-semibold text-slate-700 truncate">{doc.title}</span>
-                      <span className="block app-meta truncate">
-                        {doc.company_name} • {timeAgo(doc.uploaded_at || doc.created_at)}
-                      </span>
-                    </span>
-                    <span className={`dash-badge ${statusBadge(doc.status)}`}>{doc.status || 'Indexed'}</span>
-                    <button
-                      type="button"
-                      className="app-act app-act-danger"
-                      onClick={() => handleDelete(doc.id)}
-                      title="Delete document"
+                documents.map((doc) => {
+                  const isActive = activeDocumentId === doc.id;
+                  return (
+                    <div
+                      key={doc.id}
+                      onClick={() => setActiveDocumentId(isActive ? null : doc.id)}
+                      className={`dash-row cursor-pointer transition-colors ${isActive ? 'bg-[#EEF5FF] border border-[#2563EB]/20' : 'hover:bg-slate-50'}`}
                     >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))
+                      <span className="dash-row-icon shrink-0" style={{ background: isActive ? '#2563EB' : '#EEF5FF', color: isActive ? '#FFF' : '#2563EB' }}>
+                        <FileText className="w-[17px] h-[17px]" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className={`block text-[13px] font-semibold truncate ${isActive ? 'text-[#2563EB]' : 'text-slate-700'}`}>{doc.title}</span>
+                        <span className="block app-meta truncate">
+                          {doc.company_name} • {timeAgo(doc.uploaded_at || doc.created_at)}
+                        </span>
+                      </span>
+                      <span className={`dash-badge ${statusBadge(doc.status)}`}>{doc.status || 'Indexed'}</span>
+                      <button
+                        type="button"
+                        className="app-act app-act-danger"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(doc.id);
+                        }}
+                        title="Delete document"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  );
+                })
               )}
             </div>
           </article>
