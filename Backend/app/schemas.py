@@ -1,5 +1,26 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator, ValidationInfo
 from typing import Optional, List, Dict, Any
+import re
+
+def normalize_money(val: str) -> str:
+    if not isinstance(val, str) or val in ("N/A", "", "0", "None"): return "N/A"
+    val_lower = val.lower()
+    match = re.search(r'[-+]?\d*\.\d+|\d+', val.replace(',', ''))
+    if not match: return val
+    num = float(match.group())
+    if "t" in val_lower or "trillion" in val_lower: num *= 1000
+    elif "b" in val_lower or "billion" in val_lower: num *= 1
+    elif "m" in val_lower or "million" in val_lower: num /= 1000
+    else:
+        if num > 1000: num /= 1000
+    return f"${num:.1f}B"
+
+def normalize_eps(val: str) -> str:
+    if not isinstance(val, str) or val in ("N/A", "", "0", "None"): return "N/A"
+    match = re.search(r'[-+]?\d*\.\d+|\d+', val.replace(',', ''))
+    if not match: return val
+    num = float(match.group())
+    return f"${num:.2f}"
 
 # MARK: User Schemas
 class UserCreate(BaseModel):
@@ -105,6 +126,24 @@ class FinancialMetricSchema(BaseModel):
     yoy_change: str
     status: str  # "Positive" | "Neutral" | "Negative"
 
+    @field_validator("fy23", "fy24", mode="before")
+    @classmethod
+    def validate_money(cls, v: str, info: ValidationInfo) -> str:
+        metric = info.data.get('metric', '').lower()
+        v_str = str(v)
+        if 'margin' in metric or 'growth' in metric or 'ratio' in metric:
+            if '%' not in v_str and ('margin' in metric or 'growth' in metric):
+                try:
+                    return f"{float(v_str.replace('%',''))}%"
+                except:
+                    pass
+            return v_str
+        
+        if 'eps' in metric or 'earnings per share' in metric:
+            return normalize_eps(v_str)
+            
+        return normalize_money(v_str)
+
 class RedFlagSchema(BaseModel):
     risk_type: str
     severity: str  # "High" | "Medium" | "Low"
@@ -123,6 +162,16 @@ class ComparisonItemSchema(BaseModel):
     roe: str
     debt_to_equity: str
     fcf_conversion: str
+
+    @field_validator("revenue", "net_income", "ebitda", mode="before")
+    @classmethod
+    def norm_money(cls, v: str) -> str:
+        return normalize_money(str(v))
+
+    @field_validator("eps", mode="before")
+    @classmethod
+    def norm_eps(cls, v: str) -> str:
+        return normalize_eps(str(v))
 
 class FinancialMetricsOutput(BaseModel):
     metrics: List[FinancialMetricSchema]

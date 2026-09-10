@@ -12,12 +12,6 @@ export const comparisonService = {
   },
   exportComparison: async (companyIds) => {
     const res = await api.post('/comparison/export', { companyIds }, { responseType: 'blob' });
-    const url = window.URL.createObjectURL(new Blob([res.data]));
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', 'comparison_report.md');
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    return res.data;
   },
 };
