@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, Fragment } from 'react';
+import { Menu, Transition } from '@headlessui/react';
 import { documentService } from '../services/documentService';
 import { workspaceService } from '../services/workspaceService';
 import { PageHead, CardHead, Empty, ErrorBanner, formatDate, statusBadge } from '../components/app/ui';
-import { FileText, Upload, Search, Trash2, RefreshCw, AlertTriangle, Building2 } from 'lucide-react';
+import { FileText, Upload, Search, Trash2, RefreshCw, AlertTriangle, Building2, Layers, ChevronDown, Check } from 'lucide-react';
 import './dashboard.css';
 import './app-pages.css';
 
@@ -15,7 +16,10 @@ export const Documents = () => {
   const [filter, setFilter] = useState('All');
   const [query, setQuery] = useState('');
   const [uploading, setUploading] = useState(0);
-  const [workspaceId, setWorkspaceId] = useState(null);
+  const [workspaces, setWorkspaces] = useState([]);
+  const [workspaceId, setWorkspaceId] = useState(() => {
+    return localStorage.getItem('activeWorkspaceId') || 'all';
+  });
   const fileRef = useRef(null);
 
   const load = async () => {
@@ -34,18 +38,27 @@ export const Documents = () => {
     load();
     workspaceService
       .getWorkspaces()
-      .then((list) => list?.length && setWorkspaceId(list[0].id))
+      .then((list) => {
+        setWorkspaces(list || []);
+      })
       .catch(() => {});
   }, []);
 
   const handleUpload = async (file) => {
-    if (!file || !workspaceId) {
-      if (!workspaceId) alert('Create a research workspace first.');
-      return;
+    let targetWsId = workspaceId;
+    if (workspaceId === 'all') {
+      if (workspaces.length === 0) {
+        alert('Create a research workspace first.');
+        return;
+      }
+      targetWsId = workspaces[0].id;
     }
+
+    if (!file || !targetWsId) return;
+    
     setUploading(1);
     try {
-      await documentService.uploadDocument(file, workspaceId, 'Infosys Limited', 'Annual Report', 2024, (p) =>
+      await documentService.uploadDocument(file, targetWsId, 'Infosys Limited', 'Annual Report', 2024, (p) =>
         setUploading(Math.max(1, p))
       );
       await load();
@@ -78,17 +91,12 @@ export const Documents = () => {
       const matchQuery =
         !q ||
         [d.title, d.company_name, d.filing_type, d.fiscal_year].join(' ').toLowerCase().includes(q);
-      return matchFilter && matchQuery;
+      const matchWorkspace = workspaceId === 'all' || d.workspace_id === workspaceId;
+      return matchFilter && matchQuery && matchWorkspace;
     });
-  }, [documents, filter, query]);
+  }, [documents, filter, query, workspaceId]);
 
-  const counts = useMemo(
-    () => ({
-      total: documents.length,
-      companies: new Set(documents.map((d) => d.company_name).filter(Boolean)).size,
-    }),
-    [documents]
-  );
+
 
   return (
     <main className="dash-body">
@@ -130,44 +138,101 @@ export const Documents = () => {
         )}
       </ErrorBanner>
 
-      <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {[
-          { label: 'Documents Indexed', value: counts.total, Icon: FileText, tint: '#2563EB', bg: '#EEF5FF' },
-          { label: 'Companies Covered', value: counts.companies, Icon: Building2, tint: '#6D4AFF', bg: '#F2EEFF' },
-          { label: 'Matching Filter', value: filtered.length, Icon: Search, tint: '#3155E7', bg: '#EEF4FF' },
-          {
-            label: 'Storage Used',
-            value: documents.length
-              ? `${(documents.reduce((s, d) => s + (d.file_size || 0), 0) / 1048576).toFixed(1)} MB`
-              : '—',
-            Icon: Upload,
-            tint: '#1D7A5F',
-            bg: '#E8F7F1',
-          },
-        ].map((k, i) => (
-          <article key={k.label} className="dash-card dash-card-hover dash-kpi dash-reveal" style={{ animationDelay: `${i * 70}ms` }}>
-            <div className="flex items-start justify-between gap-3">
-              <span className="dash-kpi-label">{k.label}</span>
-              <span className="dash-kpi-icon" style={{ background: k.bg, color: k.tint }}>
-                <k.Icon className="w-[18px] h-[18px]" />
+      <section className="dash-card dash-reveal p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-50">
+        <div className="flex items-center gap-3.5 min-w-0 flex-1">
+          <span className="dash-row-icon" style={{ background: '#F2EEFF', color: '#6D4AFF' }}>
+            <Layers className="w-[18px] h-[18px]" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Workspace Filter</p>
+            <div className="mt-1.5 flex flex-wrap items-center gap-2.5">
+              <Menu as="div" className="relative inline-block text-left z-20">
+                <div>
+                  <Menu.Button className="inline-flex items-center justify-between w-full max-w-[280px] sm:w-[280px] gap-2 px-3 py-2 text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]/50">
+                    <span className="truncate">
+                      {workspaceId === 'all' 
+                        ? 'All Workspaces' 
+                        : workspaces.find(w => w.id === workspaceId)?.name || 'Select Workspace'}
+                    </span>
+                    <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" aria-hidden="true" />
+                  </Menu.Button>
+                </div>
+                <Transition
+                  as={Fragment}
+                  enter="transition ease-out duration-100"
+                  enterFrom="transform opacity-0 scale-95"
+                  enterTo="transform opacity-100 scale-100"
+                  leave="transition ease-in duration-75"
+                  leaveFrom="transform opacity-100 scale-100"
+                  leaveTo="transform opacity-0 scale-95"
+                >
+                  <Menu.Items className="absolute left-0 mt-2 w-[280px] origin-top-left rounded-xl bg-white border border-slate-200 shadow-xl ring-1 ring-black ring-opacity-5 focus:outline-none overflow-hidden">
+                    <div className="p-1.5 max-h-[300px] overflow-y-auto">
+                      <Menu.Item as={Fragment}>
+                        {({ active }) => (
+                          <button
+                            onClick={() => {
+                              setWorkspaceId('all');
+                            }}
+                            className={`flex items-center w-full px-2.5 py-2 text-[13px] rounded-lg transition-colors ${
+                              active ? 'bg-[#EEF5FF] text-[#2563EB]' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                            }`}
+                          >
+                            <span className="flex-1 text-left truncate">All Workspaces</span>
+                            {workspaceId === 'all' && (
+                              <Check className="w-4 h-4 text-[#2563EB] shrink-0 ml-2 mr-6" />
+                            )}
+                          </button>
+                        )}
+                      </Menu.Item>
+                      {workspaces.map((ws) => (
+                        <Menu.Item as={Fragment} key={ws.id}>
+                          {({ active }) => (
+                            <button
+                              onClick={() => {
+                                setWorkspaceId(ws.id);
+                                localStorage.setItem('activeWorkspaceId', ws.id);
+                              }}
+                              className={`flex items-center w-full px-2.5 py-2 text-[13px] rounded-lg transition-colors ${
+                                active ? 'bg-[#EEF5FF] text-[#2563EB]' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                              }`}
+                            >
+                              <span className="flex-1 text-left truncate">{ws.name}</span>
+                              {workspaceId === ws.id && (
+                                <Check className="w-4 h-4 text-[#2563EB] shrink-0 ml-2 mr-6" />
+                              )}
+                            </button>
+                          )}
+                        </Menu.Item>
+                      ))}
+                    </div>
+                  </Menu.Items>
+                </Transition>
+              </Menu>
+              <span className="app-meta truncate max-w-sm hidden sm:inline-block">
+                {workspaceId === 'all' 
+                  ? 'Viewing all indexed documents across workspaces.' 
+                  : 'Viewing documents for selected workspace.'}
               </span>
             </div>
-            <div className="mt-5">
-              {loading && !documents.length ? (
-                <span className="dash-skel block h-8 w-20" />
-              ) : (
-                <span className="dash-kpi-value">{k.value}</span>
-              )}
-            </div>
-          </article>
-        ))}
+          </div>
+        </div>
       </section>
 
+
       {uploading > 0 && (
-        <div className="dash-card dash-reveal p-4">
-          <p className="text-[12.5px] font-semibold text-slate-700 mb-2">Uploading… {uploading}%</p>
-          <div className="app-bar">
-            <span style={{ width: `${uploading}%` }} />
+        <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-[#0F172A]/25 backdrop-blur-sm">
+          <div className="dash-card w-full max-w-md p-6 space-y-4">
+            <div>
+              <h3 className="dash-card-title">Uploading filing</h3>
+              <p className="dash-card-sub">Please wait while the document is uploaded and indexed.</p>
+            </div>
+            <div className="pt-2">
+              <p className="text-[12.5px] font-semibold text-slate-700 mb-2">Progress… {uploading}%</p>
+              <div className="app-bar">
+                <span style={{ width: `${uploading}%` }} />
+              </div>
+            </div>
           </div>
         </div>
       )}

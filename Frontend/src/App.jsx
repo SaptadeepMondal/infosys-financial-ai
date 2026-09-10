@@ -9,6 +9,7 @@ import { Landing } from './pages/Landing';
 import { Dashboard } from './pages/Dashboard';
 import { Workspace } from './pages/Workspace';
 import { Documents } from './pages/Documents';
+import { Comparison } from './pages/Comparison';
 import { Reports } from './pages/Reports';
 import { Profile } from './pages/Profile';
 
@@ -36,6 +37,7 @@ export function App() {
           <Route path="/dashboard" element={shell(Dashboard)} />
           <Route path="/workspace" element={shell(Workspace)} />
           <Route path="/documents" element={shell(Documents)} />
+          <Route path="/comparison" element={shell(Comparison)} />
           <Route path="/reports" element={shell(Reports)} />
           <Route path="/profile" element={shell(Profile)} />
 

@@ -1,10 +1,11 @@
 import api from './api';
 
 export const chatService = {
-  query: async (query, workspace_id, company_name = 'Infosys Limited') => {
+  query: async (query, workspace_id, document_id = null, company_name = 'Infosys Limited') => {
     const res = await api.post('/chat/query', {
       query,
       workspace_id,
+      document_id,
       company_name,
     });
     return res.data;

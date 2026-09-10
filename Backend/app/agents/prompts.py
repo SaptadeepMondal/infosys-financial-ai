@@ -27,6 +27,8 @@ Extract the following metrics when available.
 INCOME STATEMENT:
 - revenue
 - gross_profit
+- gross_margin
+- ebitda
 - operating_income
 - net_income
 - earnings_per_share

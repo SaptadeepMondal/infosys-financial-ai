@@ -72,15 +72,26 @@ async def query_chat(query_in: ChatQueryRequest, token_data: dict = Depends(get_
             detail="No indexed documents are available in this workspace."
         )
 
-    # Use the first indexed document for the research query.
-    # Multi-document support can be added later.
-    # Select an indexed document that actually has processed chunks
+    # Select the document to use for research
     document = None
 
-    for doc in documents:
-        if doc.get("chunks_count", 0) > 0:
-            document = doc
-            break
+    if query_in.document_id:
+        document = await docs_col.find_one({
+            "_id": query_in.document_id,
+            "workspace_id": query_in.workspace_id,
+            "user_id": user_id
+        })
+        if not document or document.get("chunks_count", 0) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="The selected document is not found or has no processed chunks."
+            )
+    else:
+        # Use the first indexed document for the research query.
+        for doc in documents:
+            if doc.get("chunks_count", 0) > 0:
+                document = doc
+                break
 
     if not document:
         raise HTTPException(
@@ -151,10 +162,7 @@ async def query_chat(query_in: ChatQueryRequest, token_data: dict = Depends(get_
     # The Research Agent currently returns textual analysis.
     reasoning = [
         "Document Agent provided the indexed financial document context.",
-        "Extraction Agent analyzed the financial metrics.",
-        "Red Flag Agent analyzed potential financial risks.",
-        "Comparison Agent evaluated financial performance.",
-        "Research Agent synthesized the findings to answer the user query."
+        "Research Agent analyzed the source text to directly answer the user query."
     ]
 
     # Citations will be populated from structured source metadata

@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import DatabaseManager
-from app.api import users, workspaces, documents, dashboard, chat, reports, analysis
+from app.api import users, workspaces, documents, dashboard, chat, reports, analysis, comparison
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -41,6 +41,7 @@ app.include_router(dashboard.router, prefix=settings.API_V1_STR)
 app.include_router(chat.router, prefix=settings.API_V1_STR)
 app.include_router(reports.router, prefix=settings.API_V1_STR)
 app.include_router(analysis.router, prefix=settings.API_V1_STR)
+app.include_router(comparison.router, prefix=settings.API_V1_STR)
 
 @app.get("/health", tags=["System Status"])
 async def health_check():
