@@ -9,9 +9,5 @@ export const comparisonService = {
   compareCompanies: async (companyIds) => {
     const res = await api.post('/comparison/compare', { companyIds });
     return res.data;
-  },
-  exportComparison: async (companyIds) => {
-    const res = await api.post('/comparison/export', { companyIds }, { responseType: 'blob' });
-    return res.data;
-  },
+  }
 };

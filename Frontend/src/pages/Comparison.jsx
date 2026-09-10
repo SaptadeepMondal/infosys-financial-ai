@@ -11,8 +11,6 @@ import {
   Sparkles,
   FileText,
   Trophy,
-  Download,
-  Loader2,
   Layers,
   ChevronDown,
   Check,
@@ -69,7 +67,6 @@ export const Comparison = () => {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [tab, setTab] = useState('financial');
-  const [isDownloading, setIsDownloading] = useState(false);
   const entryRef = useRef(null);
 
   useEffect(() => {
@@ -162,18 +159,6 @@ export const Comparison = () => {
     } catch (err) {
       setError(err?.message || 'The comparison service did not respond.');
       setStatus('error');
-    }
-  };
-
-  const downloadReport = async () => {
-    if (selected.length < 2) return;
-    setIsDownloading(true);
-    try {
-      await comparisonService.exportComparison(selectedIds);
-    } catch (err) {
-      setNotice('Failed to download report.');
-    } finally {
-      setIsDownloading(false);
     }
   };
 
@@ -300,17 +285,6 @@ export const Comparison = () => {
           <button type="button" className="dash-btn dash-btn-ghost" onClick={clearAll}>
             Clear
           </button>
-          {status === 'ready' && (
-            <button
-              type="button"
-              className="dash-btn dash-btn-outline ml-auto"
-              onClick={downloadReport}
-              disabled={isDownloading}
-            >
-              {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              {isDownloading ? 'Downloading...' : 'Download Report'}
-            </button>
-          )}
           {status !== 'ready' && (
             <span className="app-meta ml-auto">
               {selected.length}/{MAX_COMPANIES} companies selected
