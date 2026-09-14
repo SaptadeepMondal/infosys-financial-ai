@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { reportService } from '../services/reportService';
+import { workspaceService } from '../services/workspaceService';
 import { PageHead, CardHead, Empty, formatDate } from '../components/app/ui';
 import {
   FileText,
@@ -21,13 +22,15 @@ export const Reports = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [titleInput, setTitleInput] = useState('');
   const [companyInput, setCompanyInput] = useState('Infosys Limited');
+  const [workspaces, setWorkspaces] = useState([]);
+  const [workspaceId, setWorkspaceId] = useState(() => localStorage.getItem('activeWorkspaceId') || '');
 
   const loadReports = async () => {
     setLoading(true);
     try {
       const list = await reportService.getReports();
       setReports(list);
-      if (list.length > 0 && !selectedReport) setSelectedReport(list[0]);
+      setSelectedReport((current) => list.find((report) => report.id === current?.id) || list[0] || null);
     } catch (err) {
       console.error('Failed to load reports:', err);
     } finally {
@@ -37,14 +40,26 @@ export const Reports = () => {
 
   useEffect(() => {
     loadReports();
+    workspaceService.getWorkspaces()
+      .then((items) => {
+        setWorkspaces(items);
+        setWorkspaceId((current) => current || items[0]?.id || '');
+      })
+      .catch(() => setWorkspaces([]));
   }, []);
+
+  useEffect(() => {
+    if (!reports.some((report) => report.status === 'PROCESSING')) return undefined;
+    const timer = window.setInterval(loadReports, 3000);
+    return () => window.clearInterval(timer);
+  }, [reports]);
 
   const handleCreateReport = async (e) => {
     e.preventDefault();
-    if (!titleInput.trim()) return;
+    if (!titleInput.trim() || !workspaceId) return;
     setGenerating(true);
     try {
-      const newRep = await reportService.createReport(titleInput.trim(), 'ws_demo_infy_2024', companyInput);
+      const newRep = await reportService.createReport(titleInput.trim(), workspaceId, companyInput);
       setReports((prev) => [newRep, ...prev]);
       setSelectedReport(newRep);
       setShowCreateModal(false);
@@ -171,14 +186,16 @@ export const Reports = () => {
                     <BarChart2 className="w-4 h-4 text-[#6D4AFF]" />
                     Key financial metrics
                   </h4>
-                  {selectedReport.metrics && Object.keys(selectedReport.metrics).length > 0 ? (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {Object.entries(selectedReport.metrics).map(([k, v]) => (
-                        <div key={k} className="app-metric">
-                          <span>{k}</span>
-                          <strong>{String(v)}</strong>
-                        </div>
-                      ))}
+                  {selectedReport.sections?.key_financials?.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-[12px]">
+                        <thead className="text-slate-400"><tr><th>Metric</th><th>FY23</th><th>FY24</th><th>YoY</th></tr></thead>
+                        <tbody>
+                          {selectedReport.sections.key_financials.map((metric) => (
+                            <tr key={metric.metric} className="border-t border-slate-100"><td className="py-2 font-medium">{metric.metric}</td><td>{metric.fy23}</td><td>{metric.fy24}</td><td>{metric.yoy_change}</td></tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   ) : (
                     <Empty
@@ -194,12 +211,12 @@ export const Reports = () => {
                     <ShieldAlert className="w-4 h-4 text-[#B4791F]" />
                     Risk analysis
                   </h4>
-                  {selectedReport.red_flags && selectedReport.red_flags.length > 0 ? (
+                  {selectedReport.sections?.red_flags?.length > 0 ? (
                     <div className="app-block app-block-warn space-y-2">
-                      {selectedReport.red_flags.map((flag, i) => (
+                      {selectedReport.sections.red_flags.map((flag, i) => (
                         <p key={i} className="flex gap-2">
                           <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5 text-[#B4791F]" />
-                          <span>{typeof flag === 'string' ? flag : flag.description || flag.title}</span>
+                          <span><strong>{flag.risk_type}:</strong> {flag.explanation}</span>
                         </p>
                       ))}
                     </div>
@@ -211,6 +228,19 @@ export const Reports = () => {
                     />
                   )}
                 </div>
+
+                {selectedReport.sections?.comparison?.length > 0 && (
+                  <div className="space-y-2.5">
+                    <h4 className="app-block-title px-0.5"><BarChart2 className="w-4 h-4 text-[#6D4AFF]" /> Peer comparison</h4>
+                    {selectedReport.sections.comparison.map((item) => (
+                      <p key={item.company} className="app-block"><strong>{item.company}</strong> — Revenue {item.revenue}, EBIT margin {item.ebit_margin}, ROE {item.roe}, debt/equity {item.debt_to_equity}.</p>
+                    ))}
+                  </div>
+                )}
+
+                {selectedReport.sections?.outlook && (
+                  <div className="app-block"><h4 className="app-block-title"><Sparkles className="w-4 h-4 text-[#2563EB]" /> Analyst outlook</h4><p>{selectedReport.sections.outlook}</p></div>
+                )}
 
                 <div className="pt-3 border-t border-[#EDF2FB] flex flex-wrap items-center justify-between gap-2 app-meta">
                   <span>Report Agent • multi-agent synthesis</span>
@@ -259,6 +289,14 @@ export const Reports = () => {
             <div>
               <label className="app-label">Company name</label>
               <input className="app-field" value={companyInput} onChange={(e) => setCompanyInput(e.target.value)} />
+            </div>
+
+            <div>
+              <label className="app-label">Workspace</label>
+              <select className="app-field" value={workspaceId} onChange={(e) => setWorkspaceId(e.target.value)} required>
+                <option value="">Select a workspace</option>
+                {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+              </select>
             </div>
 
             <div className="app-block">

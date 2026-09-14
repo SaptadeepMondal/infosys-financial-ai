@@ -121,8 +121,12 @@ async def query_chat(query_in: ChatQueryRequest, token_data: dict = Depends(get_
             detail="The selected document has not produced any processed chunks."
         )
 
-    # Build the document context for the Research pipeline
+    # Build a bounded document context and deterministic source metadata.
+    # A full annual report can exceed the model context window.
     document_parts = []
+    citations = []
+    context_characters = 0
+    max_context_characters = 90_000
 
     for chunk in chunks:
         page_number = chunk.get(
@@ -137,10 +141,18 @@ async def query_chat(query_in: ChatQueryRequest, token_data: dict = Depends(get_
 
         text = chunk.get("text", "").strip()
 
-        if text:
+        if text and context_characters < max_context_characters:
+            text = text[:max_context_characters - context_characters]
             document_parts.append(
                 f"[Page {page_number} | Section: {section}]\n{text}"
             )
+            context_characters += len(text)
+            if len(citations) < 8:
+                citations.append(Citation(
+                    source=document.get("title", "Uploaded filing"),
+                    page=str(page_number),
+                    quote=text[:280].replace("\n", " "),
+                ))
 
     document_text = "\n\n".join(document_parts)
 
@@ -165,10 +177,6 @@ async def query_chat(query_in: ChatQueryRequest, token_data: dict = Depends(get_
         "Research Agent analyzed the source text to directly answer the user query."
     ]
 
-    # Citations will be populated from structured source metadata
-    # once the Research Agent returns source-level citations.
-    citations = []
-
     assistant_msg = ChatMessageResponse(
         id=msg_id,
         workspace_id=query_in.workspace_id,
@@ -190,7 +198,10 @@ async def query_chat(query_in: ChatQueryRequest, token_data: dict = Depends(get_
         "timestamp": now_str
     })
     
-    return ChatQueryResponse(message=assistant_msg, agent_status="Research Agent citation verified")
+    return ChatQueryResponse(
+        message=assistant_msg,
+        agent_status=f"Research Agent grounded in {len(citations)} indexed source excerpts",
+    )
 
 @router.get("/history/{workspace_id}", response_model=ChatHistoryResponse)
 async def get_chat_history(workspace_id: str, token_data: dict = Depends(get_current_user_token)):

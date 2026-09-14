@@ -58,6 +58,10 @@ export const Documents = () => {
     
     setUploading(1);
     try {
+      if (!file.name?.toLowerCase().endsWith('.pdf')) {
+        alert('Please upload a PDF filing.');
+        return;
+      }
       const companyName = file.name ? (file.name.split('.').slice(0, -1).join('.') || file.name) : 'Infosys Limited';
       // Capitalize first letter
       const formattedName = companyName.charAt(0).toUpperCase() + companyName.slice(1);

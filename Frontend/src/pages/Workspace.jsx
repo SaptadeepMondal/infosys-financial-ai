@@ -175,7 +175,7 @@ export const Workspace = () => {
       <input
         ref={fileRef}
         type="file"
-        accept=".pdf,.txt,.md,.csv,.xlsx,.docx"
+        accept="application/pdf,.pdf"
         className="hidden"
         onChange={(e) => {
           handleUpload(e.target.files?.[0]);

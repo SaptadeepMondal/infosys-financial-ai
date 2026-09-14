@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user_token
 from app.schemas import ReportResponse
 from app.agents.crew_runner import FinancialCrewRunner
+from app.services.document_context import load_workspace_context
 
 router = APIRouter(prefix="/analysis", tags=["Analysis Engine"])
 
@@ -17,7 +18,7 @@ class AnalysisRequest(BaseModel):
     query: Optional[str] = None
     company_name: Optional[str] = "Infosys Limited"
 
-async def run_analysis_pipeline_task(report_id: str, workspace_id: str, query: str, company_name: str, document_text: str):
+async def run_analysis_pipeline_task(report_id: str, document_id: str, query: str, company_name: str, document_text: str):
     """
     Background task to run the CrewAI pipeline and update the database.
     """
@@ -28,7 +29,7 @@ async def run_analysis_pipeline_task(report_id: str, workspace_id: str, query: s
         # Run the compute-heavy CrewAI pipeline in a thread to avoid blocking the event loop
         result_sections = await asyncio.to_thread(
             FinancialCrewRunner.run_pipeline,
-            workspace_id=workspace_id,
+            document_id=document_id,
             document_text=document_text,
             query=query,
             company_name=company_name
@@ -41,6 +42,7 @@ async def run_analysis_pipeline_task(report_id: str, workspace_id: str, query: s
                 "$set": {
                     "status": "COMPLETED",
                     "sections": result_sections.model_dump(),
+                    "summary": result_sections.executive_summary,
                     "updated_at": datetime.now(timezone.utc).isoformat()
                 }
             }
@@ -67,7 +69,7 @@ async def trigger_analysis(
     user_id = token_data.get("sub")
     db = get_db()
     
-    # 1. Validate workspace and fetch context (mocking document text aggregation for now)
+    # 1. Validate workspace and load the actual indexed filing chunks.
     ws_col = db["workspaces"]
     docs_col = db["documents"]
     
@@ -75,17 +77,14 @@ async def trigger_analysis(
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
         
-    # Aggregate text from documents in this workspace
-    # In a real scenario, this would query vector DB or concatenate parsed chunks
-    docs = docs_col.find({"workspace_id": request.workspace_id})
-    document_text_blocks = []
-    async for doc in docs:
-        # Dummy content if real chunks are missing
-        document_text_blocks.append(f"Document: {doc.get('title', 'Unknown')} - Data available.")
-    
-    document_text = "\n".join(document_text_blocks)
-    if not document_text:
-        document_text = "No extensive document data found. Operating with limited context."
+    source_documents, document_text, _ = await load_workspace_context(
+        db, request.workspace_id, user_id, request.company_name
+    )
+    if not source_documents or not document_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No indexed document chunks are available for this workspace and company.",
+        )
         
     # 2. Create a pending report record
     reports_col = db["reports"]
@@ -110,7 +109,7 @@ async def trigger_analysis(
     background_tasks.add_task(
         run_analysis_pipeline_task,
         report_id=rep_id,
-        workspace_id=request.workspace_id,
+        document_id=source_documents[0]["_id"],
         query=request.query,
         company_name=request.company_name,
         document_text=document_text
