@@ -9,7 +9,8 @@ from app.schemas import (
 )
 from app.core.database import get_db
 from app.core.security import get_current_user_token
-from app.agents.crew_runner import FinancialCrewRunner
+from app.agents.report_agent import run_report_agent
+from app.services.document_context import load_workspace_context
 
 # MARK: Router Setup
 router = APIRouter(prefix="/reports", tags=["Analyst Reports"])
@@ -52,15 +53,15 @@ async def list_reports(token_data: dict = Depends(get_current_user_token)):
             ))
     return ReportListResponse(reports=items, total=len(items))
 
-async def run_report_generation_task(report_id: str, workspace_id: str, company_name: str, document_text: str):
+async def run_report_generation_task(report_id: str, document_id: str, company_name: str, document_text: str):
     db = get_db()
     reports_col = db["reports"]
     try:
         result_sections = await asyncio.to_thread(
-            FinancialCrewRunner.run_pipeline,
-            workspace_id=workspace_id,
+            run_report_agent,
+            document_id=document_id,
             document_text=document_text,
-            query=None,
+            report_id=report_id,
             company_name=company_name
         )
         
@@ -70,6 +71,7 @@ async def run_report_generation_task(report_id: str, workspace_id: str, company_
                 "$set": {
                     "status": "COMPLETED",
                     "sections": result_sections.model_dump(),
+                    "summary": result_sections.executive_summary,
                     "updated_at": datetime.now(timezone.utc).isoformat()
                 }
             }
@@ -93,15 +95,18 @@ async def create_report(report_in: ReportCreate, background_tasks: BackgroundTas
     db = get_db()
     reports_col = db["reports"]
     docs_col = db["documents"]
-    
-    docs = docs_col.find({"workspace_id": report_in.workspace_id})
-    document_text_blocks = []
-    async for doc in docs:
-        document_text_blocks.append(f"Document: {doc.get('title', 'Unknown')} - Data available.")
-    
-    document_text = "\n".join(document_text_blocks)
-    if not document_text:
-        document_text = "No extensive document data found. Operating with limited context."
+    workspace = await db["workspaces"].find_one({"_id": report_in.workspace_id, "user_id": user_id})
+    if not workspace:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+
+    source_documents, document_text, _ = await load_workspace_context(
+        db, report_in.workspace_id, user_id
+    )
+    if not source_documents or not document_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Upload and index at least one PDF before generating a report.",
+        )
     
     rep_id = f"rep_{uuid.uuid4().hex[:12]}"
     now_str = datetime.now(timezone.utc).isoformat()
@@ -123,7 +128,7 @@ async def create_report(report_in: ReportCreate, background_tasks: BackgroundTas
     background_tasks.add_task(
         run_report_generation_task,
         report_id=rep_id,
-        workspace_id=report_in.workspace_id,
+        document_id=source_documents[0]["_id"],
         company_name=report_in.company_name or "Infosys Limited",
         document_text=document_text
     )
@@ -252,15 +257,15 @@ async def export_report(report_id: str, token_data: dict = Depends(get_current_u
     document.add_heading("3. Automated Red Flags & Anomaly Scan", level=1)
     if sec and sec.red_flags:
         for r in sec.red_flags:
-            p = document.add_paragraph(style='List Bullet')
-            run = p.add_run(f"[{r.severity.upper()}] {r.risk_type}: ")
-            run.bold = True
-            p.add_run(f"{r.explanation} (Citations: {', '.join(r.citations) if r.citations else 'N/A'})")
-    else:
-        document.add_paragraph("No red flags recorded.")
-        
-    # 4. Multi-Company Peer Benchmarking
-    document.add_heading("4. Multi-Company Peer Benchmarking", level=1)
+            citations = "; ".join(r.citations) if r.citations else "No source citation returned"
+            md_lines.append(f"- **[{r.severity.upper()}] {r.risk_type}:** {r.explanation} *(Citations: {citations})*")
+    
+    md_lines.extend([
+        "",
+        "## 4. Multi-Company Peer Benchmarking",
+        "| Company | Revenue | EBIT Margin | ROE | FCF Conversion |",
+        "| :--- | :--- | :--- | :--- | :--- |"
+    ])
     if sec and sec.comparison:
         table = document.add_table(rows=1, cols=5)
         table.style = 'Table Grid'
