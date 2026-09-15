@@ -26,4 +26,9 @@ export const reportService = {
     });
     return res.data;
   },
+
+  deleteReport: async (id) => {
+    const res = await api.delete(`/reports/${id}`);
+    return res.data;
+  },
 };
