@@ -25,6 +25,8 @@ export const Reports = () => {
   const [companyInput, setCompanyInput] = useState('Infosys Limited');
   const [workspaces, setWorkspaces] = useState([]);
   const [workspaceId, setWorkspaceId] = useState(() => localStorage.getItem('activeWorkspaceId') || '');
+  const [reportToDelete, setReportToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const loadReports = async () => {
     setLoading(true);
@@ -99,17 +101,21 @@ export const Reports = () => {
     }
   };
 
-  const handleDeleteReport = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this report?")) return;
+  const confirmDelete = async () => {
+    if (!reportToDelete) return;
+    setIsDeleting(true);
     try {
-      await reportService.deleteReport(id);
-      setReports((prev) => prev.filter((r) => r.id !== id));
-      if (selectedReport?.id === id) {
+      await reportService.deleteReport(reportToDelete);
+      setReports((prev) => prev.filter((r) => r.id !== reportToDelete));
+      if (selectedReport?.id === reportToDelete) {
         setSelectedReport(null);
       }
+      setReportToDelete(null);
     } catch (err) {
       console.error(err);
       alert('Failed to delete report.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -188,7 +194,7 @@ export const Reports = () => {
                     <button
                       type="button"
                       className="dash-btn dash-btn-ghost !text-red-600 hover:!bg-red-50"
-                      onClick={() => handleDeleteReport(selectedReport.id)}
+                      onClick={() => setReportToDelete(selectedReport.id)}
                       title="Delete Report"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -358,6 +364,38 @@ export const Reports = () => {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {reportToDelete && (
+        <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-[#0F172A]/25 backdrop-blur-sm">
+          <div className="dash-card w-full max-w-sm p-6 space-y-4">
+            <div>
+              <h3 className="dash-card-title text-red-600">Delete report?</h3>
+              <p className="dash-card-sub mt-2 leading-relaxed">
+                This action cannot be undone. The report will be permanently removed from your workspace.
+              </p>
+            </div>
+            
+            <div className="flex justify-end gap-2.5 pt-2">
+              <button 
+                type="button" 
+                className="dash-btn dash-btn-ghost" 
+                onClick={() => setReportToDelete(null)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button 
+                type="button" 
+                className="dash-btn dash-btn-primary !bg-red-600 hover:!bg-red-700 !border-red-600" 
+                onClick={confirmDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Deleting...' : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </main>

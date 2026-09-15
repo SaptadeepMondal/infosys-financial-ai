@@ -43,6 +43,10 @@ export const Workspace = () => {
   const [newWsName, setNewWsName] = useState('');
   const [citations, setCitations] = useState([]);
   const [uploading, setUploading] = useState(0);
+  const [docToDelete, setDocToDelete] = useState(null);
+  const [isDeletingDoc, setIsDeletingDoc] = useState(false);
+  const [wsToDelete, setWsToDelete] = useState(null);
+  const [isDeletingWs, setIsDeletingWs] = useState(false);
   const fileRef = useRef(null);
 
   const loadWorkspaces = async () => {
@@ -128,27 +132,35 @@ export const Workspace = () => {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Remove this document from the workspace index?')) return;
+  const confirmDeleteDoc = async () => {
+    if (!docToDelete) return;
+    setIsDeletingDoc(true);
     try {
-      await documentService.deleteDocument(id);
+      await documentService.deleteDocument(docToDelete);
       await loadDocuments();
+      setDocToDelete(null);
     } catch (err) {
       alert('Delete failed.');
+    } finally {
+      setIsDeletingDoc(false);
     }
   };
 
-  const handleDeleteWorkspace = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this workspace and all its documents?')) return;
+  const confirmDeleteWs = async () => {
+    if (!wsToDelete) return;
+    setIsDeletingWs(true);
     try {
-      await workspaceService.deleteWorkspace(id);
-      const remaining = workspaces.filter(w => w.id !== id);
+      await workspaceService.deleteWorkspace(wsToDelete);
+      const remaining = workspaces.filter(w => w.id !== wsToDelete);
       setWorkspaces(remaining);
-      if (activeWorkspaceId === id) {
+      if (activeWorkspaceId === wsToDelete) {
         setActiveWorkspaceId(remaining.length > 0 ? remaining[0].id : null);
       }
+      setWsToDelete(null);
     } catch (err) {
       alert('Failed to delete workspace.');
+    } finally {
+      setIsDeletingWs(false);
     }
   };
 
@@ -233,7 +245,7 @@ export const Workspace = () => {
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              handleDeleteWorkspace(ws.id);
+                              setWsToDelete(ws.id);
                             }}
                             className="absolute right-2 p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100 z-10"
                             title="Delete Workspace"
@@ -331,7 +343,7 @@ export const Workspace = () => {
                         className="app-act app-act-danger"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleDelete(doc.id);
+                          setDocToDelete(doc.id);
                         }}
                         title="Delete document"
                       >
@@ -437,6 +449,50 @@ export const Workspace = () => {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {docToDelete && (
+        <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-[#0F172A]/25 backdrop-blur-sm">
+          <div className="dash-card w-full max-w-sm p-6 space-y-4">
+            <div>
+              <h3 className="dash-card-title text-red-600">Delete document?</h3>
+              <p className="dash-card-sub mt-2 leading-relaxed">
+                Remove this document from the workspace index?
+              </p>
+            </div>
+            
+            <div className="flex justify-end gap-2.5 pt-2">
+              <button type="button" className="dash-btn dash-btn-ghost" onClick={() => setDocToDelete(null)} disabled={isDeletingDoc}>
+                Cancel
+              </button>
+              <button type="button" className="dash-btn dash-btn-primary !bg-red-600 hover:!bg-red-700 !border-red-600" onClick={confirmDeleteDoc} disabled={isDeletingDoc}>
+                {isDeletingDoc ? 'Deleting...' : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {wsToDelete && (
+        <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-[#0F172A]/25 backdrop-blur-sm">
+          <div className="dash-card w-full max-w-sm p-6 space-y-4">
+            <div>
+              <h3 className="dash-card-title text-red-600">Delete workspace?</h3>
+              <p className="dash-card-sub mt-2 leading-relaxed">
+                Are you sure you want to delete this workspace and all its documents?
+              </p>
+            </div>
+            
+            <div className="flex justify-end gap-2.5 pt-2">
+              <button type="button" className="dash-btn dash-btn-ghost" onClick={() => setWsToDelete(null)} disabled={isDeletingWs}>
+                Cancel
+              </button>
+              <button type="button" className="dash-btn dash-btn-primary !bg-red-600 hover:!bg-red-700 !border-red-600" onClick={confirmDeleteWs} disabled={isDeletingWs}>
+                {isDeletingWs ? 'Deleting...' : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </main>

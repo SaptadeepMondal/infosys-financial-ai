@@ -20,6 +20,8 @@ export const Documents = () => {
   const [workspaceId, setWorkspaceId] = useState(() => {
     return localStorage.getItem('activeWorkspaceId') || 'all';
   });
+  const [docToDelete, setDocToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const fileRef = useRef(null);
 
   const load = async () => {
@@ -77,13 +79,17 @@ export const Documents = () => {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this document from the index?')) return;
+  const confirmDelete = async () => {
+    if (!docToDelete) return;
+    setIsDeleting(true);
     try {
-      await documentService.deleteDocument(id);
+      await documentService.deleteDocument(docToDelete);
       await load();
+      setDocToDelete(null);
     } catch (err) {
       alert('Delete failed.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -340,7 +346,7 @@ export const Documents = () => {
                         <button
                           type="button"
                           className="app-act app-act-danger"
-                          onClick={() => handleDelete(doc.id)}
+                          onClick={() => setDocToDelete(doc.id)}
                           title="Delete document"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -354,6 +360,38 @@ export const Documents = () => {
           )}
         </div>
       </article>
+
+      {docToDelete && (
+        <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-[#0F172A]/25 backdrop-blur-sm">
+          <div className="dash-card w-full max-w-sm p-6 space-y-4">
+            <div>
+              <h3 className="dash-card-title text-red-600">Delete document?</h3>
+              <p className="dash-card-sub mt-2 leading-relaxed">
+                This will remove the document from the index. The research agents will no longer be able to use it.
+              </p>
+            </div>
+            
+            <div className="flex justify-end gap-2.5 pt-2">
+              <button 
+                type="button" 
+                className="dash-btn dash-btn-ghost" 
+                onClick={() => setDocToDelete(null)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button 
+                type="button" 
+                className="dash-btn dash-btn-primary !bg-red-600 hover:!bg-red-700 !border-red-600" 
+                onClick={confirmDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Deleting...' : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 };
