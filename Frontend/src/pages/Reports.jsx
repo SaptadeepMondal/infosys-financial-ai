@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { reportService } from '../services/reportService';
+import { workspaceService } from '../services/workspaceService';
 import { PageHead, CardHead, Empty, formatDate } from '../components/app/ui';
 import {
   FileText,
@@ -21,6 +22,8 @@ export const Reports = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [titleInput, setTitleInput] = useState('');
   const [companyInput, setCompanyInput] = useState('Infosys Limited');
+  const [workspaces, setWorkspaces] = useState([]);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState('');
 
   const loadReports = async () => {
     setLoading(true);
@@ -30,6 +33,16 @@ export const Reports = () => {
       if (list.length > 0 && !selectedReport) setSelectedReport(list[0]);
     } catch (err) {
       console.error('Failed to load reports:', err);
+    }
+    
+    try {
+      const wsList = await workspaceService.getWorkspaces();
+      setWorkspaces(wsList);
+      if (wsList.length > 0) {
+        setSelectedWorkspaceId(wsList[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to load workspaces:', err);
     } finally {
       setLoading(false);
     }
@@ -41,10 +54,10 @@ export const Reports = () => {
 
   const handleCreateReport = async (e) => {
     e.preventDefault();
-    if (!titleInput.trim()) return;
+    if (!titleInput.trim() || !selectedWorkspaceId) return;
     setGenerating(true);
     try {
-      const newRep = await reportService.createReport(titleInput.trim(), 'ws_demo_infy_2024', companyInput);
+      const newRep = await reportService.createReport(titleInput.trim(), selectedWorkspaceId, companyInput);
       setReports((prev) => [newRep, ...prev]);
       setSelectedReport(newRep);
       setShowCreateModal(false);
@@ -56,19 +69,20 @@ export const Reports = () => {
     }
   };
 
-  const handleExportMarkdown = async (id, title) => {
+  const handleExportDocument = async (id, title) => {
     try {
-      const markdown = await reportService.exportReport(id);
-      const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8;' });
+      const docxBlob = await reportService.exportReport(id);
+      const blob = new Blob([docxBlob], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `${title.replace(/\s+/g, '_')}_Report.md`);
+      link.setAttribute('download', `${title.replace(/\s+/g, '_')}_Report.docx`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     } catch (err) {
-      alert('Failed to export markdown report.');
+      console.error(err);
+      alert('Failed to export document report.');
     }
   };
 
@@ -146,7 +160,7 @@ export const Reports = () => {
                   <button
                     type="button"
                     className="dash-btn dash-btn-ghost"
-                    onClick={() => handleExportMarkdown(selectedReport.id, selectedReport.title)}
+                    onClick={() => handleExportDocument(selectedReport.id, selectedReport.title)}
                   >
                     <Download className="w-4 h-4" />
                     Export
@@ -161,7 +175,7 @@ export const Reports = () => {
                     Executive summary
                   </h4>
                   <p className="whitespace-pre-line">
-                    {selectedReport.summary ||
+                    {selectedReport.sections?.executive_summary || selectedReport.summary ||
                       'The Report Agent has not returned a summary for this report yet. Once the agents finish synthesising the indexed filings, the executive thesis will appear here.'}
                   </p>
                 </div>
@@ -171,12 +185,12 @@ export const Reports = () => {
                     <BarChart2 className="w-4 h-4 text-[#6D4AFF]" />
                     Key financial metrics
                   </h4>
-                  {selectedReport.metrics && Object.keys(selectedReport.metrics).length > 0 ? (
+                  {selectedReport.sections?.key_financials && selectedReport.sections.key_financials.length > 0 ? (
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {Object.entries(selectedReport.metrics).map(([k, v]) => (
-                        <div key={k} className="app-metric">
-                          <span>{k}</span>
-                          <strong>{String(v)}</strong>
+                      {selectedReport.sections.key_financials.map((m, i) => (
+                        <div key={i} className="app-metric">
+                          <span>{m.metric} (YoY: {m.yoy_change})</span>
+                          <strong>{m.fy24}</strong>
                         </div>
                       ))}
                     </div>
@@ -194,12 +208,12 @@ export const Reports = () => {
                     <ShieldAlert className="w-4 h-4 text-[#B4791F]" />
                     Risk analysis
                   </h4>
-                  {selectedReport.red_flags && selectedReport.red_flags.length > 0 ? (
+                  {selectedReport.sections?.red_flags && selectedReport.sections.red_flags.length > 0 ? (
                     <div className="app-block app-block-warn space-y-2">
-                      {selectedReport.red_flags.map((flag, i) => (
+                      {selectedReport.sections.red_flags.map((flag, i) => (
                         <p key={i} className="flex gap-2">
                           <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5 text-[#B4791F]" />
-                          <span>{typeof flag === 'string' ? flag : flag.description || flag.title}</span>
+                          <span><strong>{flag.risk_type}:</strong> {flag.explanation}</span>
                         </p>
                       ))}
                     </div>
@@ -211,6 +225,16 @@ export const Reports = () => {
                     />
                   )}
                 </div>
+
+                {selectedReport.sections?.outlook && (
+                  <div className="app-block">
+                    <h4 className="app-block-title">
+                      <Sparkles className="w-4 h-4 text-[#1D7A5F]" />
+                      Outlook
+                    </h4>
+                    <p className="whitespace-pre-line">{selectedReport.sections.outlook}</p>
+                  </div>
+                )}
 
                 <div className="pt-3 border-t border-[#EDF2FB] flex flex-wrap items-center justify-between gap-2 app-meta">
                   <span>Report Agent • multi-agent synthesis</span>
@@ -259,6 +283,23 @@ export const Reports = () => {
             <div>
               <label className="app-label">Company name</label>
               <input className="app-field" value={companyInput} onChange={(e) => setCompanyInput(e.target.value)} />
+            </div>
+
+            <div>
+              <label className="app-label">Workspace</label>
+              <select
+                className="app-field"
+                value={selectedWorkspaceId}
+                onChange={(e) => setSelectedWorkspaceId(e.target.value)}
+                required
+              >
+                <option value="" disabled>Select a workspace</option>
+                {workspaces.map((ws) => (
+                  <option key={ws.id} value={ws.id}>
+                    {ws.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="app-block">

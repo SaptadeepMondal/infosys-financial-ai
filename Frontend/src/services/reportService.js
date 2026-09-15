@@ -22,7 +22,7 @@ export const reportService = {
 
   exportReport: async (id) => {
     const res = await api.get(`/reports/${id}/export`, {
-      responseType: 'text',
+      responseType: 'blob',
     });
     return res.data;
   },
