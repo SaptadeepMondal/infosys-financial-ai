@@ -120,11 +120,11 @@ class ChatHistoryResponse(BaseModel):
 
 # MARK: Report Schemas
 class FinancialMetricSchema(BaseModel):
-    metric: str
-    fy23: str
-    fy24: str
-    yoy_change: str
-    status: str  # "Positive" | "Neutral" | "Negative"
+    metric: str = "Unknown"
+    fy23: str = "N/A"
+    fy24: str = "N/A"
+    yoy_change: str = "N/A"
+    status: str = "Neutral"  # "Positive" | "Neutral" | "Negative"
 
     @field_validator("fy23", "fy24", mode="before")
     @classmethod
@@ -145,23 +145,23 @@ class FinancialMetricSchema(BaseModel):
         return normalize_money(v_str)
 
 class RedFlagSchema(BaseModel):
-    risk_type: str
-    severity: str  # "High" | "Medium" | "Low"
-    affected_metrics: List[str]
-    explanation: str
-    citations: List[str]
+    risk_type: str = "Unknown Risk"
+    severity: str = "Medium"  # "High" | "Medium" | "Low"
+    affected_metrics: List[str] = []
+    explanation: str = "No explanation provided."
+    citations: List[str] = []
 
 class ComparisonItemSchema(BaseModel):
-    company: str
-    revenue: str
-    net_income: str
-    eps: str
-    gross_margin: str
-    ebit_margin: str
-    ebitda: str
-    roe: str
-    debt_to_equity: str
-    fcf_conversion: str
+    company: str = "Unknown Company"
+    revenue: str = "N/A"
+    net_income: str = "N/A"
+    eps: str = "N/A"
+    gross_margin: str = "N/A"
+    ebit_margin: str = "N/A"
+    ebitda: str = "N/A"
+    roe: str = "N/A"
+    debt_to_equity: str = "N/A"
+    fcf_conversion: str = "N/A"
 
     @field_validator("revenue", "net_income", "ebitda", mode="before")
     @classmethod
@@ -183,11 +183,11 @@ class ComparisonOutput(BaseModel):
     comparison: List[ComparisonItemSchema]
 
 class ReportSectionsSchema(BaseModel):
-    executive_summary: str
-    key_financials: List[FinancialMetricSchema]
-    red_flags: List[RedFlagSchema]
-    comparison: List[ComparisonItemSchema]
-    outlook: str
+    executive_summary: str = ""
+    key_financials: List[FinancialMetricSchema] = []
+    red_flags: List[RedFlagSchema] = []
+    comparison: List[ComparisonItemSchema] = []
+    outlook: str = ""
 
 class ReportCreate(BaseModel):
     title: str

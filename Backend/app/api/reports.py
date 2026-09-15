@@ -26,17 +26,31 @@ async def list_reports(token_data: dict = Depends(get_current_user_token)):
     cursor = reports_col.find({"user_id": user_id}).sort("created_at", -1)
     items = []
     async for doc in cursor:
-        items.append(ReportResponse(
-            id=doc["_id"],
-            title=doc["title"],
-            workspace_id=doc["workspace_id"],
-            user_id=doc["user_id"],
-            company_name=doc.get("company_name", "Infosys Limited"),
-            summary=doc.get("summary", ""),
-            status=doc.get("status", "COMPLETED"),
-            created_at=doc["created_at"],
-            sections=doc.get("sections")
-        ))
+        try:
+            items.append(ReportResponse(
+                id=doc["_id"],
+                title=doc["title"],
+                workspace_id=doc["workspace_id"],
+                user_id=doc["user_id"],
+                company_name=doc.get("company_name", "Infosys Limited"),
+                summary=doc.get("summary", ""),
+                status=doc.get("status", "COMPLETED"),
+                created_at=doc["created_at"],
+                sections=doc.get("sections")
+            ))
+        except Exception as e:
+            # Fallback if sections is malformed
+            items.append(ReportResponse(
+                id=doc["_id"],
+                title=doc["title"],
+                workspace_id=doc["workspace_id"],
+                user_id=doc["user_id"],
+                company_name=doc.get("company_name", "Infosys Limited"),
+                summary=doc.get("summary", ""),
+                status="FAILED",  # Marking as failed because it couldn't be parsed
+                created_at=doc["created_at"],
+                sections=None
+            ))
     return ReportListResponse(reports=items, total=len(items))
 
 async def run_report_generation_task(report_id: str, document_id: str, company_name: str, document_text: str):
@@ -141,17 +155,34 @@ async def get_report(report_id: str, token_data: dict = Depends(get_current_user
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
         
-    return ReportResponse(
-        id=doc["_id"],
-        title=doc["title"],
-        workspace_id=doc["workspace_id"],
-        user_id=doc["user_id"],
-        company_name=doc.get("company_name", "Infosys Limited"),
-        summary=doc.get("summary", ""),
-        status=doc.get("status", "COMPLETED"),
-        created_at=doc["created_at"],
-        sections=doc.get("sections")
-    )
+    try:
+        return ReportResponse(
+            id=doc["_id"],
+            title=doc["title"],
+            workspace_id=doc["workspace_id"],
+            user_id=doc["user_id"],
+            company_name=doc.get("company_name", "Infosys Limited"),
+            summary=doc.get("summary", ""),
+            status=doc.get("status", "COMPLETED"),
+            created_at=doc["created_at"],
+            sections=doc.get("sections")
+        )
+    except Exception:
+        return ReportResponse(
+            id=doc["_id"],
+            title=doc["title"],
+            workspace_id=doc["workspace_id"],
+            user_id=doc["user_id"],
+            company_name=doc.get("company_name", "Infosys Limited"),
+            summary=doc.get("summary", ""),
+            status="FAILED",
+            created_at=doc["created_at"],
+            sections=None
+        )
+
+from docx import Document
+from docx.shared import Pt, Inches, RGBColor
+import io
 
 @router.get("/{report_id}/export")
 async def export_report(report_id: str, token_data: dict = Depends(get_current_user_token)):
@@ -163,40 +194,67 @@ async def export_report(report_id: str, token_data: dict = Depends(get_current_u
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
         
-    rep = ReportResponse(
-        id=doc["_id"],
-        title=doc["title"],
-        workspace_id=doc["workspace_id"],
-        user_id=doc["user_id"],
-        company_name=doc.get("company_name", "Infosys Limited"),
-        summary=doc.get("summary", ""),
-        status=doc.get("status", "COMPLETED"),
-        created_at=doc["created_at"],
-        sections=doc.get("sections")
-    )
+    try:
+        rep = ReportResponse(
+            id=doc["_id"],
+            title=doc["title"],
+            workspace_id=doc["workspace_id"],
+            user_id=doc["user_id"],
+            company_name=doc.get("company_name", "Infosys Limited"),
+            summary=doc.get("summary", ""),
+            status=doc.get("status", "COMPLETED"),
+            created_at=doc["created_at"],
+            sections=doc.get("sections")
+        )
+    except Exception:
+        rep = ReportResponse(
+            id=doc["_id"],
+            title=doc["title"],
+            workspace_id=doc["workspace_id"],
+            user_id=doc["user_id"],
+            company_name=doc.get("company_name", "Infosys Limited"),
+            summary=doc.get("summary", ""),
+            status="FAILED",
+            created_at=doc["created_at"],
+            sections=None
+        )
     
     sec = rep.sections
     
-    md_lines = [
-        f"# {rep.title}",
-        f"**Company:** {rep.company_name} | **Generated:** {rep.created_at[:10]} | **Status:** Grounded in Source Documents",
-        "",
-        "## 1. Executive Summary",
-        f"{sec.executive_summary if sec else rep.summary}",
-        "",
-        "## 2. Key Financial Metrics (FY23 vs FY24)",
-        "| Metric | FY2023 | FY2024 | YoY Change | Status |",
-        "| :--- | :--- | :--- | :--- | :--- |"
-    ]
+    document = Document()
     
+    # Title & Metadata
+    heading = document.add_heading(rep.title, 0)
+    document.add_paragraph(f"Company: {rep.company_name} | Generated: {rep.created_at[:10]} | Status: Grounded in Source Documents")
+    
+    # 1. Executive Summary
+    document.add_heading("1. Executive Summary", level=1)
+    document.add_paragraph(sec.executive_summary if sec else rep.summary)
+    
+    # 2. Key Financial Metrics
+    document.add_heading("2. Key Financial Metrics (FY23 vs FY24)", level=1)
     if sec and sec.key_financials:
+        table = document.add_table(rows=1, cols=5)
+        table.style = 'Table Grid'
+        hdr_cells = table.rows[0].cells
+        hdr_cells[0].text = 'Metric'
+        hdr_cells[1].text = 'FY2023'
+        hdr_cells[2].text = 'FY2024'
+        hdr_cells[3].text = 'YoY Change'
+        hdr_cells[4].text = 'Status'
+        
         for m in sec.key_financials:
-            md_lines.append(f"| **{m.metric}** | {m.fy23} | {m.fy24} | {m.yoy_change} | {m.status} |")
-    
-    md_lines.extend([
-        "",
-        "## 3. Automated Red Flags & Anomaly Scan",
-    ])
+            row_cells = document.add_table(rows=1, cols=5).rows[0].cells if False else table.add_row().cells
+            row_cells[0].text = m.metric
+            row_cells[1].text = str(m.fy23)
+            row_cells[2].text = str(m.fy24)
+            row_cells[3].text = str(m.yoy_change)
+            row_cells[4].text = m.status
+    else:
+        document.add_paragraph("No metrics available.")
+
+    # 3. Red Flags
+    document.add_heading("3. Automated Red Flags & Anomaly Scan", level=1)
     if sec and sec.red_flags:
         for r in sec.red_flags:
             citations = "; ".join(r.citations) if r.citations else "No source citation returned"
@@ -209,22 +267,37 @@ async def export_report(report_id: str, token_data: dict = Depends(get_current_u
         "| :--- | :--- | :--- | :--- | :--- |"
     ])
     if sec and sec.comparison:
+        table = document.add_table(rows=1, cols=5)
+        table.style = 'Table Grid'
+        hdr_cells = table.rows[0].cells
+        hdr_cells[0].text = 'Company'
+        hdr_cells[1].text = 'Revenue'
+        hdr_cells[2].text = 'EBIT Margin'
+        hdr_cells[3].text = 'ROE'
+        hdr_cells[4].text = 'FCF Conversion'
+        
         for c in sec.comparison:
-            md_lines.append(f"| **{c.company}** | {c.revenue} | {c.ebit_margin} | {c.roe} | {c.fcf_conversion} |")
+            row_cells = table.add_row().cells
+            row_cells[0].text = c.company
+            row_cells[1].text = str(c.revenue)
+            row_cells[2].text = str(c.ebit_margin)
+            row_cells[3].text = str(c.roe)
+            row_cells[4].text = str(c.fcf_conversion)
+    else:
+        document.add_paragraph("No peer benchmarking available.")
             
-    md_lines.extend([
-        "",
-        "## 5. Analyst Outlook & Recommendation",
-        f"{sec.outlook if sec else 'Positive outlook on operational resilience.'}",
-        "",
-        "---",
-        "*Report generated by Infosys AI Development of Multi-Agent AI Analysis System for Financial Research and Business Insights.*"
-    ])
+    # 5. Outlook
+    document.add_heading("5. Analyst Outlook & Recommendation", level=1)
+    document.add_paragraph(sec.outlook if sec else "Positive outlook on operational resilience.")
     
-    md_content = "\n".join(md_lines)
+    document.add_paragraph("\nReport generated by Infosys AI Development of Multi-Agent AI Analysis System for Financial Research and Business Insights.")
+    
+    file_stream = io.BytesIO()
+    document.save(file_stream)
+    file_stream.seek(0)
     
     return Response(
-        content=md_content,
-        media_type="text/markdown",
-        headers={"Content-Disposition": f"attachment; filename=analyst_report_{report_id}.md"}
+        content=file_stream.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="analyst_report_{report_id}.docx"'}
     )

@@ -33,6 +33,16 @@ export const Reports = () => {
       setSelectedReport((current) => list.find((report) => report.id === current?.id) || list[0] || null);
     } catch (err) {
       console.error('Failed to load reports:', err);
+    }
+    
+    try {
+      const wsList = await workspaceService.getWorkspaces();
+      setWorkspaces(wsList);
+      if (wsList.length > 0) {
+        setSelectedWorkspaceId(wsList[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to load workspaces:', err);
     } finally {
       setLoading(false);
     }
@@ -71,19 +81,20 @@ export const Reports = () => {
     }
   };
 
-  const handleExportMarkdown = async (id, title) => {
+  const handleExportDocument = async (id, title) => {
     try {
-      const markdown = await reportService.exportReport(id);
-      const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8;' });
+      const docxBlob = await reportService.exportReport(id);
+      const blob = new Blob([docxBlob], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `${title.replace(/\s+/g, '_')}_Report.md`);
+      link.setAttribute('download', `${title.replace(/\s+/g, '_')}_Report.docx`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     } catch (err) {
-      alert('Failed to export markdown report.');
+      console.error(err);
+      alert('Failed to export document report.');
     }
   };
 
@@ -161,7 +172,7 @@ export const Reports = () => {
                   <button
                     type="button"
                     className="dash-btn dash-btn-ghost"
-                    onClick={() => handleExportMarkdown(selectedReport.id, selectedReport.title)}
+                    onClick={() => handleExportDocument(selectedReport.id, selectedReport.title)}
                   >
                     <Download className="w-4 h-4" />
                     Export
@@ -176,7 +187,7 @@ export const Reports = () => {
                     Executive summary
                   </h4>
                   <p className="whitespace-pre-line">
-                    {selectedReport.summary ||
+                    {selectedReport.sections?.executive_summary || selectedReport.summary ||
                       'The Report Agent has not returned a summary for this report yet. Once the agents finish synthesising the indexed filings, the executive thesis will appear here.'}
                   </p>
                 </div>
