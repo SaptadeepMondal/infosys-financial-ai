@@ -14,3 +14,6 @@ aiofiles>=23.2.1
 crewai
 pypdf
 pymupdf
+openai>=1.0.0
+pandas>=2.0.0
+pymongo>=4.6.0

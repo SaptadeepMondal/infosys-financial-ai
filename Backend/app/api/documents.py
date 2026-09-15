@@ -54,6 +54,10 @@ async def upload_document(
     fiscal_year: int = Form(2024),
     token_data: dict = Depends(get_current_user_token)
 ):
+    safe_filename = os.path.basename(file.filename or "uploaded_filing.pdf")
+    if not safe_filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Only PDF filings are supported.")
+
     user_id = token_data.get("sub")
     db = get_db()
     ws_col = db["workspaces"]
@@ -66,7 +70,7 @@ async def upload_document(
     doc_id = f"doc_{uuid.uuid4().hex[:12]}"
     now_str = datetime.now(timezone.utc).isoformat()
     
-    file_filename = f"{doc_id}_{file.filename}"
+    file_filename = f"{doc_id}_{safe_filename}"
     file_path = os.path.join(UPLOAD_DIR, file_filename)
     
     content = await file.read()
@@ -77,7 +81,7 @@ async def upload_document(
     
     doc = {
         "_id": doc_id,
-        "title": file.filename,
+        "title": safe_filename,
         "company_name": company_name or "Unknown Company",
         "filing_type": filing_type or "Financial Filing",
         "fiscal_year": int(fiscal_year) if fiscal_year else 2024,
@@ -190,6 +194,17 @@ async def delete_document(document_id: str, token_data: dict = Depends(get_curre
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
         
     await docs_col.delete_one({"_id": document_id})
+    await db["parsed_chunks"].delete_many({"document_id": document_id})
+    await db["extracted_metrics"].delete_many({"document_id": document_id})
+    await db["red_flags"].delete_many({"document_id": document_id})
+
+    # file_path is stored relative to the API upload directory. Never let a
+    # database value escape that directory during deletion.
+    stored_file = os.path.basename(doc.get("file_path", ""))
+    if stored_file:
+        local_file = os.path.join(UPLOAD_DIR, stored_file)
+        if os.path.isfile(local_file):
+            os.remove(local_file)
     
     if doc.get("workspace_id"):
         await ws_col.update_one(

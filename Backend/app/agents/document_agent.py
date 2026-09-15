@@ -1,13 +1,12 @@
 import os
 import uuid
-import time
-import json
 import logging
 from openai import AsyncOpenAI
 import pymupdf
 import pandas as pd
 from crewai import Agent, Task, Crew
 from app.core.database import get_db
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +37,13 @@ class DocumentProcessor:
     @staticmethod
     async def process_document(document_id: str, file_path: str):
         logger.info(f"Starting optimized document processing for {document_id}")
+        if not settings.OPENAI_API_KEY:
+            raise RuntimeError("OPENAI_API_KEY is required to create document embeddings.")
+
         client = AsyncOpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    base_url=os.getenv("OPENAI_API_BASE")
-)
+            api_key=settings.OPENAI_API_KEY,
+            base_url=settings.OPENAI_API_BASE or None,
+        )
 
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"PDF file not found: {file_path}")
@@ -108,12 +110,18 @@ class DocumentProcessor:
             logger.warning(f"No chunks extracted from document {document_id}")
             return {"status": "success", "chunks_extracted": 0, "tables_extracted": len(tables_data)}
 
-        # 4. Generate Embeddings
+        # 4. Generate real embeddings in batches. These are later used for
+        # evidence retrieval; zero-filled placeholders make vector search useless.
         logger.info(f"Generating embeddings for {len(chunks)} chunks...")
-        
-        # OpenRouter does not support embeddings. We will mock them.
-        for chunk in chunks:
-            chunk["embedding"] = [0.0] * 1536
+        batch_size = 50
+        for offset in range(0, len(chunks), batch_size):
+            batch = chunks[offset:offset + batch_size]
+            response = await client.embeddings.create(
+                model=settings.OPENAI_EMBEDDING_MODEL,
+                input=[chunk["text"] for chunk in batch],
+            )
+            for chunk, embedding in zip(batch, response.data, strict=True):
+                chunk["embedding"] = embedding.embedding
 
 
         # 5. Save to MongoDB
@@ -124,8 +132,7 @@ class DocumentProcessor:
         await collection.delete_many({"document_id": document_id})
         
         # Insert new chunks
-        # OpenRouter doesn't support embeddings, but chunks are queried by document_id anyway.
-        valid_chunks = chunks
+        valid_chunks = [chunk for chunk in chunks if chunk.get("embedding")]
         if valid_chunks:
             await collection.insert_many(valid_chunks)
             
