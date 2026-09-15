@@ -10,6 +10,7 @@ import {
   BarChart2,
   FileCheck,
   CheckCircle2,
+  Trash2,
 } from 'lucide-react';
 import './dashboard.css';
 import './app-pages.css';
@@ -86,6 +87,20 @@ export const Reports = () => {
     }
   };
 
+  const handleDeleteReport = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this report?")) return;
+    try {
+      await reportService.deleteReport(id);
+      setReports((prev) => prev.filter((r) => r.id !== id));
+      if (selectedReport?.id === id) {
+        setSelectedReport(null);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to delete report.');
+    }
+  };
+
   return (
     <main className="dash-body">
       <PageHead
@@ -157,14 +172,25 @@ export const Reports = () => {
                 title={selectedReport.title}
                 subtitle={`${selectedReport.company_name} • Grounded in source documents`}
                 right={
-                  <button
-                    type="button"
-                    className="dash-btn dash-btn-ghost"
-                    onClick={() => handleExportDocument(selectedReport.id, selectedReport.title)}
-                  >
-                    <Download className="w-4 h-4" />
-                    Export
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="dash-btn dash-btn-ghost !text-red-600 hover:!bg-red-50"
+                      onClick={() => handleDeleteReport(selectedReport.id)}
+                      title="Delete Report"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      className="dash-btn dash-btn-ghost"
+                      onClick={() => handleExportDocument(selectedReport.id, selectedReport.title)}
+                    >
+                      <Download className="w-4 h-4" />
+                      Export
+                    </button>
+                  </div>
                 }
               />
 

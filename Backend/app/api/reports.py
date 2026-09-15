@@ -296,3 +296,14 @@ async def export_report(report_id: str, token_data: dict = Depends(get_current_u
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f'attachment; filename="analyst_report_{report_id}.docx"'}
     )
+
+@router.delete("/{report_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_report(report_id: str, token_data: dict = Depends(get_current_user_token)):
+    user_id = token_data.get("sub")
+    db = get_db()
+    reports_col = db["reports"]
+    
+    result = await reports_col.delete_one({"_id": report_id, "user_id": user_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found or not authorized")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
