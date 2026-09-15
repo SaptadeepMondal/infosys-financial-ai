@@ -8,12 +8,11 @@ import './app-pages.css';
 export const Profile = () => {
   const { user, logout } = useAuth();
   const [prefs, setPrefs] = useState({ digest: true, riskAlerts: true, reportReady: false });
+  const [showResetModal, setShowResetModal] = useState(false);
 
-  const handleResetDemo = () => {
-    if (window.confirm('Reset active session and reload demo credentials?')) {
-      localStorage.clear();
-      window.location.href = '/login';
-    }
+  const confirmResetDemo = () => {
+    localStorage.clear();
+    window.location.href = '/login';
   };
 
   const name = user?.full_name || 'Demo Analyst';
@@ -28,7 +27,7 @@ export const Profile = () => {
         title="Profile & Settings"
         subtitle="Manage your analyst profile, workspace preferences and session."
         actions={
-          <button type="button" className="dash-btn dash-btn-ghost" onClick={handleResetDemo}>
+          <button type="button" className="dash-btn dash-btn-ghost" onClick={() => setShowResetModal(true)}>
             <RefreshCw className="w-4 h-4" />
             Reset session
           </button>
@@ -152,7 +151,7 @@ export const Profile = () => {
               reports remain untouched.
             </p>
             <div className="flex flex-wrap gap-2.5">
-              <button type="button" className="dash-btn dash-btn-ghost" onClick={handleResetDemo}>
+              <button type="button" className="dash-btn dash-btn-ghost" onClick={() => setShowResetModal(true)}>
                 <RefreshCw className="w-4 h-4" />
                 Reset session
               </button>
@@ -171,6 +170,36 @@ export const Profile = () => {
           </div>
         </article>
       </section>
+
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-[#0F172A]/25 backdrop-blur-sm">
+          <div className="dash-card w-full max-w-sm p-6 space-y-4">
+            <div>
+              <h3 className="dash-card-title text-red-600">Reset session?</h3>
+              <p className="dash-card-sub mt-2 leading-relaxed">
+                This will clear your local session data and return you to the sign-in screen. Your indexed filings and reports remain untouched.
+              </p>
+            </div>
+            
+            <div className="flex justify-end gap-2.5 pt-2">
+              <button 
+                type="button" 
+                className="dash-btn dash-btn-ghost" 
+                onClick={() => setShowResetModal(false)}
+              >
+                Cancel
+              </button>
+              <button 
+                type="button" 
+                className="dash-btn dash-btn-primary !bg-red-600 hover:!bg-red-700 !border-red-600" 
+                onClick={confirmResetDemo}
+              >
+                Yes, Reset
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 };
